@@ -1,6 +1,6 @@
 [package]
 name = "sort_by_derive"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "Unlicense"
 description = "Derive macro `#[derive(SortBy)]`, deriving traits `Ord`, `PartialOrd`, `Eq`, `PartialEq` and `Hash` for structs that can't automatically derive from those traits."
