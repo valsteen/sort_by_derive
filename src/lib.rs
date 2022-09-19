@@ -92,7 +92,7 @@ fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
 
         impl core::cmp::PartialOrd<Self> for #struct_name {
             fn partial_cmp(&self, other: &Self) -> core::option::Option<core::cmp::Ordering> {
-                Some(self.cmp(other))
+                std::option::Option::Some(self.cmp(other))
             }
         }
 
@@ -169,7 +169,7 @@ impl core::cmp::PartialEq<Self> for Toto {
 }
 impl core::cmp::PartialOrd<Self> for Toto {
     fn partial_cmp(&self, other: &Self) -> core::option::Option<core::cmp::Ordering> {
-        Some(self.cmp(other))
+        std::option::Option::Some(self.cmp(other))
     }
 }
 impl core::cmp::Ord for Toto {
