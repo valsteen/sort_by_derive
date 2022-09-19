@@ -42,8 +42,8 @@ fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
 
     for field in fields.named {
         let mut i = field.attrs.iter();
-        if let Some(ident) = i.next() {
-            if ident.path.get_ident().filter(|i| *i == "sort_by").is_none() || i.next().is_some() {
+        if let Some(attr) = i.next() {
+            if attr.path.get_ident().filter(|i| *i == "sort_by").is_none() || i.next().is_some() {
                 return syn::Error::new(
                     field.span(),
                     r#"expected at most one `sort_by` attribute"#,
