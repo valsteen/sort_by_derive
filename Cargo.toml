@@ -14,9 +14,7 @@ categories = ["development-tools"]
 proc-macro = true
 
 [dependencies]
-itertools = "0.10.3"
 proc-macro2 = "1.0.43"
 syn = "1.0.99"
 quote = "1.0.21"
 rust-format = "0.3.4"
-
