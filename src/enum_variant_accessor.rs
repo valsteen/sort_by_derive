@@ -261,7 +261,6 @@ mod test {
         let output = rust_format::RustFmt::default()
             .format_str(output.to_string())
             .unwrap();
-        println!("{}", output);
         assert_eq!(
             output,
             r#"pub trait SomeEnumAccessor {
