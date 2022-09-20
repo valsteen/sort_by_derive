@@ -1,6 +1,6 @@
 [package]
 name = "sort_by_derive"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 license = "Unlicense"
 description = "Derive macro `#[derive(SortBy)]`, deriving traits `Ord`, `PartialOrd`, `Eq`, `PartialEq` and `Hash` for structs that can't automatically derive from those traits."
@@ -9,14 +9,16 @@ documentation = "https://github.com/valsteen/sort_by_derive/#readme"
 repository = "https://github.com/valsteen/sort_by_derive"
 keywords = ["macro", "derive", "ordering", "sorting"]
 categories = ["development-tools"]
+readme = "README.md"
 
 [lib]
 proc-macro = true
 
 [dependencies]
 proc-macro2 = "1.0.43"
-syn = "1.0.99"
+syn = { version = "1.0.99", features = ["full"] }
 quote = "1.0.21"
+
 
 [dev-dependencies]
 rust-format = "0.3.4"
