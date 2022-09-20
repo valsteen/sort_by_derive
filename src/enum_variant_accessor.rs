@@ -7,7 +7,7 @@ use syn::{
 
 const ATTR_HELP: &str = "EnumAccessor: Invalid accessor declaration, expected #[accessor(field1: type, (VariantWithoutAccessor1,VariantWithoutAccessor2))]";
 const ENUM_HELP: &str =
-    "EnumAccessor: Only enums where all variants have one anonymous parameter are supported";
+    "EnumAccessor: only variants with one unnamed variant and named variants are supported";
 
 struct Accessor {
     ident: Ident,
@@ -111,6 +111,8 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
     };
 
     let mut variants = vec![];
+    let mut named_variants = vec![];
+
     for variant in enu.variants {
         match variant.fields {
             Fields::Unnamed(f) => {
@@ -119,7 +121,13 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
                 }
                 variants.push(variant.ident)
             }
-            _ => return syn::Error::new(variant.span(), ENUM_HELP).into_compile_error(),
+            Fields::Named(_) => {
+                variants.push(variant.ident.clone());
+                named_variants.push(variant.ident);
+            }
+            _ => {
+                return syn::Error::new(variant.span(), ENUM_HELP).into_compile_error();
+            }
         }
     }
 
@@ -188,8 +196,9 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
             match (
                 accessor.except.is_empty(),
                 accessor.except.contains(variant),
+                named_variants.contains(variant),
             ) {
-                (true, _) => {
+                (true, _, false) => {
                     ro_variants.push(
                         quote::quote_spanned!(span => Self::#variant(x) => &x.#accessor_name),
                     );
@@ -197,14 +206,31 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
                         quote::quote_spanned!(span => Self::#variant(x) => &mut x.#accessor_name),
                     );
                 }
-                (false, true) => {
+                (true, _, true) => {
+                    ro_variants.push(
+                        quote::quote_spanned!(span => Self::#variant{#accessor_name, ..} => #accessor_name),
+                    );
+                    mut_variants.push(
+                        quote::quote_spanned!(span => Self::#variant{#accessor_name, ..} => #accessor_name),
+                    );
+                }
+                (_, true, false) => {
                     ro_variants.push(quote::quote_spanned!(span => Self::#variant(_) => std::option::Option::None));
                     mut_variants
                         .push(quote::quote_spanned!(span => Self::#variant(_) => std::option::Option::None));
                 }
-                (false, false) => {
+                (_, true, true) => {
+                    ro_variants.push(quote::quote_spanned!(span => Self::#variant{..} => std::option::Option::None));
+                    mut_variants
+                        .push(quote::quote_spanned!(span => Self::#variant{..} => std::option::Option::None));
+                }
+                (false, false, false) => {
                     ro_variants.push(quote::quote_spanned!(span => Self::#variant(x) => std::option::Option::Some(&x.#accessor_name)));
                     mut_variants.push(quote::quote_spanned!(span => Self::#variant(x) => std::option::Option::Some(&mut x.#accessor_name)));
+                }
+                (false, false, true) => {
+                    ro_variants.push(quote::quote_spanned!(span => Self::#variant{#accessor_name, ..} => std::option::Option::Some(#accessor_name)));
+                    mut_variants.push(quote::quote_spanned!(span => Self::#variant{#accessor_name, ..}=> std::option::Option::Some(#accessor_name)));
                 }
             };
         }
@@ -254,7 +280,8 @@ mod test {
                 A(b),
                 C(d),
                 D(g),
-                G(x)
+                G(x),
+                H { acc1: usize, acc2: u8, acc3: String }
             }
         };
         let output = crate::enum_variant_accessor::impl_enum_accessor(syn::parse2(input).unwrap());
@@ -278,6 +305,7 @@ impl SomeEnumAccessor for SomeEnum {
             Self::C(_) => std::option::Option::None,
             Self::D(x) => std::option::Option::Some(&x.acc1),
             Self::G(x) => std::option::Option::Some(&x.acc1),
+            Self::H { acc1, .. } => std::option::Option::Some(acc1),
         }
     }
     fn acc1_mut(&mut self) -> std::option::Option<&mut usize> {
@@ -286,6 +314,7 @@ impl SomeEnumAccessor for SomeEnum {
             Self::C(_) => std::option::Option::None,
             Self::D(x) => std::option::Option::Some(&mut x.acc1),
             Self::G(x) => std::option::Option::Some(&mut x.acc1),
+            Self::H { acc1, .. } => std::option::Option::Some(acc1),
         }
     }
     fn acc2(&self) -> &u8 {
@@ -294,6 +323,7 @@ impl SomeEnumAccessor for SomeEnum {
             Self::C(x) => &x.acc2,
             Self::D(x) => &x.acc2,
             Self::G(x) => &x.acc2,
+            Self::H { acc2, .. } => acc2,
         }
     }
     fn acc2_mut(&mut self) -> &mut u8 {
@@ -302,6 +332,7 @@ impl SomeEnumAccessor for SomeEnum {
             Self::C(x) => &mut x.acc2,
             Self::D(x) => &mut x.acc2,
             Self::G(x) => &mut x.acc2,
+            Self::H { acc2, .. } => acc2,
         }
     }
     fn acc3(&self) -> std::option::Option<&String> {
@@ -310,6 +341,7 @@ impl SomeEnumAccessor for SomeEnum {
             Self::C(x) => std::option::Option::Some(&x.acc3),
             Self::D(_) => std::option::Option::None,
             Self::G(x) => std::option::Option::Some(&x.acc3),
+            Self::H { acc3, .. } => std::option::Option::Some(acc3),
         }
     }
     fn acc3_mut(&mut self) -> std::option::Option<&mut String> {
@@ -318,6 +350,7 @@ impl SomeEnumAccessor for SomeEnum {
             Self::C(x) => std::option::Option::Some(&mut x.acc3),
             Self::D(_) => std::option::Option::None,
             Self::G(x) => std::option::Option::Some(&mut x.acc3),
+            Self::H { acc3, .. } => std::option::Option::Some(acc3),
         }
     }
 }

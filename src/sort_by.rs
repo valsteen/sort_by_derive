@@ -102,7 +102,7 @@ fn parse_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
         let mut attrs = field
             .attrs
             .iter()
-            .filter(|i| i.path.get_ident().map(|i| i == "accessor") == Some(true));
+            .filter(|i| i.path.get_ident().map(|i| i == "sort_by") == Some(true));
 
         if attrs.next().is_none() {
             continue;

@@ -69,7 +69,8 @@ mod test {
             .unwrap();
 
         println!("{}", output);
-        assert_eq!(r#"pub trait EEnumSequence {
+        assert_eq!(
+            r#"pub trait EEnumSequence {
     fn enum_sequence(&self) -> usize;
 }
 impl EEnumSequence for E {
