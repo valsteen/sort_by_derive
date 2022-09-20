@@ -9,6 +9,7 @@ documentation = "https://github.com/valsteen/sort_by_derive/#readme"
 repository = "https://github.com/valsteen/sort_by_derive"
 keywords = ["macro", "derive", "ordering", "sorting"]
 categories = ["development-tools"]
+readme = "README.md"
 
 [lib]
 proc-macro = true
