@@ -36,11 +36,11 @@ pub fn impl_enum_sequence(input: DeriveInput) -> TokenStream {
 
     quote::quote_spanned! {input_span =>
         pub trait #trait_ident {
-            fn seq(&self) -> usize;
+            fn enum_sequence(&self) -> usize;
         }
 
         impl #trait_ident for #ident {
-            fn seq(&self) -> usize {
+            fn enum_sequence(&self) -> usize {
                 match self {
                     #(#match_branches),*
                 }
@@ -68,12 +68,12 @@ mod test {
             .format_str(output.to_string())
             .unwrap();
 
-        assert_eq!(
-            r#"pub trait EEnumSequence {
-    fn seq(&self) -> usize;
+        println!("{}", output);
+        assert_eq!(r#"pub trait EEnumSequence {
+    fn enum_sequence(&self) -> usize;
 }
 impl EEnumSequence for E {
-    fn seq(&self) -> usize {
+    fn enum_sequence(&self) -> usize {
         match self {
             Self::A => 0usize,
             Self::B(..) => 1usize,

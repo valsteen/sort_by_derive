@@ -128,7 +128,7 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
     for attr in input
         .attrs
         .iter()
-        .filter(|i| i.path.get_ident().map(|i| i == "accessor").is_some())
+        .filter(|i| i.path.get_ident().map(|i| i == "accessor") == Some(true))
     {
         match parse_attr(attr) {
             Ok(accessor) => {
