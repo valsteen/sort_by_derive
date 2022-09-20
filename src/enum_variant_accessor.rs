@@ -5,8 +5,9 @@ use syn::{
     ExprTuple, ExprType, Fields, Type,
 };
 
-const ATTR_HELP: &str = "Invalid accessor declaration, expected #[accessor(field1: type, (VariantWithoutAccessor1,VariantWithoutAccessor2))]";
-const ENUM_HELP: &str = "Only enums where all variants have one anonymous parameter are supported";
+const ATTR_HELP: &str = "EnumAccessor: Invalid accessor declaration, expected #[accessor(field1: type, (VariantWithoutAccessor1,VariantWithoutAccessor2))]";
+const ENUM_HELP: &str =
+    "EnumAccessor: Only enums where all variants have one anonymous parameter are supported";
 
 struct Accessor {
     ident: Ident,
@@ -95,7 +96,7 @@ fn parse_attr(attr: &Attribute) -> Result<Accessor, syn::Error> {
 }
 
 fn make_mut(ident: &Ident, span: Span) -> Ident {
-    Ident::new(format!("{}_mut", ident).as_str(), span)
+    Ident::new(format!("{ident}_mut").as_str(), span)
 }
 
 pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
@@ -148,7 +149,7 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
         return syn::Error::new(input_span, r#"Missing accessor declaration, expected #[accessor(field1: type, (ExceptionVariant1,ExceptionVariant2))]"#).into_compile_error();
     }
 
-    let extension_trait = Ident::new(format!("{}Accessor", ident).as_str(), input_span);
+    let extension_trait = Ident::new(format!("{ident}Accessor").as_str(), input_span);
 
     let mut accessor_impls = Vec::new();
     let mut accessor_defs = Vec::new();
@@ -178,7 +179,7 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
 
         for except in accessor.except.iter() {
             if !variants.iter().any(|i| i == except) {
-                return syn::Error::new(except.span(), format!("variant {} not found", except))
+                return syn::Error::new(except.span(), format!("variant {except} not found"))
                     .into_compile_error();
             }
         }
@@ -256,7 +257,7 @@ mod test {
                 G(x)
             }
         };
-        let output = crate::enum_accessor::impl_enum_accessor(syn::parse2(input).unwrap());
+        let output = crate::enum_variant_accessor::impl_enum_accessor(syn::parse2(input).unwrap());
         let output = rust_format::RustFmt::default()
             .format_str(output.to_string())
             .unwrap();

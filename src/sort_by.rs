@@ -21,7 +21,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
                 return e.into_compile_error();
             }
             Err(None) => {
-                return syn::Error::new(input.span(), r#"invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, ...)]"#)
+                return syn::Error::new(input.span(), r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, ...)]"#)
                     .into_compile_error();
             }
         }
@@ -33,8 +33,11 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
             ..
         }) => n,
         _ => {
-            return syn::Error::new(input.span(), r#"expected a struct with named fields"#)
-                .into_compile_error();
+            return syn::Error::new(
+                input.span(),
+                r#"SortBy: expected a struct with named fields"#,
+            )
+            .into_compile_error();
         }
     };
 
@@ -44,7 +47,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
             if attr.path.get_ident().filter(|i| *i == "sort_by").is_none() || i.next().is_some() {
                 return syn::Error::new(
                     field.span(),
-                    r#"expected at most one `sort_by` attribute"#,
+                    r#"SortBy: expected at most one `sort_by` attribute"#,
                 )
                 .into_compile_error();
             }
@@ -62,7 +65,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     } else {
         return syn::Error::new(
             input_span,
-            r#"no field to sort on. Mark fields to sort on with #[sort_by]"#,
+            r#"SortBy: no field to sort on. Mark fields to sort on with #[sort_by]"#,
         )
         .into_compile_error();
     };
@@ -149,7 +152,6 @@ mod test {
         let output = rust_format::RustFmt::default()
             .format_str(output.to_string())
             .unwrap();
-        println!("{}", output);
         assert_eq!(
             output,
             r#"impl std::hash::Hash for Toto {
