@@ -5,8 +5,7 @@ use syn::{
     FieldsNamed, Lit, Meta, NestedMeta,
 };
 
-const HELP_SORTBY: &str =
-    r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, ...)]"#;
+const HELP_SORTBY: &str = r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, methodcall())]"#;
 
 pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     let input_span = input.span();
@@ -120,29 +119,39 @@ fn parse_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
     Ok(sortable_expressions)
 }
 
-fn parse_meta(attr: &Attribute) -> Result<Vec<Expr>, Option<Error>> {
-    let mut sortable_fields = Vec::new();
-    match attr.parse_meta() {
-        Ok(Meta::List(list)) => {
-            for name in list.nested {
-                match name {
-                    NestedMeta::Meta(Meta::Path(p)) => {
-                        let expr: Expr =
-                            syn::parse_str(p.get_ident().unwrap().to_string().as_str()).unwrap();
-                        sortable_fields.push(expr)
-                    }
-                    NestedMeta::Lit(Lit::Str(l)) => {
-                        let expr: Expr = syn::parse_str(l.value().as_str()).unwrap();
-                        sortable_fields.push(expr);
-                    }
-                    _ => return Err(None),
+fn parse_meta(attr: &Attribute) -> Result<Vec<Expr>, ()> {
+    if let Ok(Meta::List(list)) = attr.parse_meta() {
+        let mut sortable_fields = Vec::new();
+        let mut valid = true;
+        for name in list.nested {
+            match name {
+                NestedMeta::Meta(Meta::Path(p)) => {
+                    let expr: Expr =
+                        syn::parse_str(p.get_ident().unwrap().to_string().as_str()).unwrap();
+                    sortable_fields.push(expr)
+                }
+                NestedMeta::Lit(Lit::Str(l)) => {
+                    let expr: Expr = syn::parse_str(l.value().as_str()).unwrap();
+                    sortable_fields.push(expr);
+                }
+                _ => {
+                    valid = false;
+                    break;
                 }
             }
         }
-        Ok(_) => return Err(None),
-        Err(err) => return Err(Some(err)),
+        if valid {
+            return Ok(sortable_fields);
+        }
     }
-    Ok(sortable_fields)
+
+    match syn::parse_str::<Expr>(attr.tokens.to_string().as_str()) {
+        Ok(Expr::Tuple(tuple)) => return Ok(tuple.elems.into_iter().collect()),
+        Ok(Expr::Paren(expr)) => return Ok(vec![*expr.expr]),
+        _ => (),
+    }
+
+    Err(())
 }
 
 #[cfg(test)]
@@ -201,7 +210,7 @@ impl core::cmp::Ord for Toto {
     #[test]
     fn test_enum() {
         let input = syn::parse_quote! {
-            #[sort_by("get_something()", "something.do_this()")]
+            #[sort_by(get_something(), something.do_this())]
             #[accessor(global_time: usize)]
             enum Toto {
                 A(u32),
@@ -237,6 +246,49 @@ impl core::cmp::Ord for Toto {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         core::cmp::Ord::cmp(&self.get_something(), &other.get_something())
             .then_with(|| self.something.do_this().cmp(&other.something.do_this()))
+    }
+}
+"#
+        );
+    }
+
+    #[test]
+    fn test_singlecall() {
+        let input = syn::parse_quote! {
+            #[sort_by(get_something())]
+            #[accessor(global_time: usize)]
+            enum Toto {
+                A(u32),
+                B,
+                G { doesnotmatter: String, anyway: usize }
+            }
+        };
+
+        let output = crate::sort_by::impl_sort_by_derive(syn::parse2(input).unwrap());
+        let output = rust_format::RustFmt::default()
+            .format_str(output.to_string())
+            .unwrap();
+        assert_eq!(
+            output,
+            r#"impl std::hash::Hash for Toto {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.get_something().hash(state);
+    }
+}
+impl core::cmp::Eq for Toto {}
+impl core::cmp::PartialEq<Self> for Toto {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+impl core::cmp::PartialOrd<Self> for Toto {
+    fn partial_cmp(&self, other: &Self) -> core::option::Option<core::cmp::Ordering> {
+        std::option::Option::Some(self.cmp(other))
+    }
+}
+impl core::cmp::Ord for Toto {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        core::cmp::Ord::cmp(&self.get_something(), &other.get_something())
     }
 }
 "#

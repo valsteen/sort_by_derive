@@ -13,14 +13,14 @@ This crate provides 3 derive macros `SortBy`, `EnumAccessor` and `EnumSequence`.
 
 Fields that should be used for sorting are marked with the attribute `#[sort_by]`. Other fields will be ignored.
 
-Alternatively, or in combination with, a struct-level or enum-level `#[sort_by(method1(),method2())]` can be declared. This top-level declaration takes precedence,
-fields comparison will be considered if method call comparison are `eq`.
+Alternatively, or in combination with, a struct-level or enum-level `#[sort_by(method1(),method2(),attr1,nested.attr)]` can be declared. This top-level declaration takes precedence,
+fields comparison will be considered if top-level comparisons are all `eq`. The top-level `sort_by` attribute takes a list of attributes or method calls; items will be prepended with `self.`.
 
 #### Example
 
 ```rust
 #[derive(SortBy)]
-#[sort_by("somemethod()")]
+#[sort_by(somemethod())]
 struct Something {
     #[sort_by]
     a: u16,
@@ -200,7 +200,7 @@ Imagine the following :
 #[accessor(global_time: usize)]
 #[accessor(channel: u8, (CC))]
 #[accessor(pitch: u8, (CC,SomethingElse))]
-#[sort_by("global_time()", "channel()", "pitch()", "enum_sequence()")]
+#[sort_by(global_time(), channel(), pitch(), enum_sequence())]
 enum Note {
     NoteOn(NoteOn),
     NoteOff(NoteOff),
