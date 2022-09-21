@@ -5,6 +5,9 @@ use syn::{
     FieldsNamed, Lit, Meta, NestedMeta,
 };
 
+const HELP_SORTBY: &str =
+    r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, ...)]"#;
+
 pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     let input_span = input.span();
     let struct_name = input.ident.clone();
@@ -18,13 +21,9 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     {
         match parse_meta(attr) {
             Ok(mut vec) => sortable_expressions.append(&mut vec),
-            Err(Some(e)) => {
-                return e.into_compile_error();
-            }
-            Err(None) => {
-                return Error::new(input_span, r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, ...)]"#)
-                    .into_compile_error();
-            }
+            _ => {
+                return Error::new(attr.span(), HELP_SORTBY).into_compile_error();
+            },
         }
     }
 
