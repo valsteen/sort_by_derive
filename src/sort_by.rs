@@ -136,8 +136,7 @@ fn parse_outer(attr: &Attribute) -> Result<Vec<Expr>, ()> {
                     sortable_fields.push(expr)
                 }
                 NestedMeta::Lit(Lit::Str(l)) => {
-                    let expr: Expr = syn::parse_str(l.value().as_str()).unwrap();
-                    sortable_fields.push(expr);
+                    sortable_fields.push(l.parse().unwrap());
                 }
                 _ => {
                     valid = false;
