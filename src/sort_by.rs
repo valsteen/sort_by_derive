@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::{quote_spanned, ToTokens};
 
 use syn::{
-    self, spanned::Spanned, Attribute, Data, DataStruct, DeriveInput, Error, Expr, Fields,
+    self, spanned::Spanned, Attribute, Data, DataStruct, DeriveInput, Error, Expr, ExprLit, Fields,
     FieldsNamed, Lit, Meta, NestedMeta,
 };
 
@@ -69,7 +69,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         .map(|expr| syn::parse_quote_spanned!(expr.span() => self.#expr.hash(state)))
         .collect();
 
-    quote::quote_spanned! {input_span =>
+    quote_spanned! {input_span =>
         impl std::hash::Hash for #struct_name {
             fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
                 #(#hash_expressions);*;
@@ -150,7 +150,15 @@ fn parse_outer(attr: &Attribute) -> Result<Vec<Expr>, ()> {
     }
 
     match syn::parse2::<Expr>(attr.tokens.clone()) {
-        Ok(Expr::Tuple(tuple)) => return Ok(tuple.elems.into_iter().collect()),
+        Ok(Expr::Tuple(tuple)) => {
+            let elems = tuple.elems.into_iter().map(|elem| match elem {
+                Expr::Lit(ExprLit {
+                    lit: Lit::Str(lit), ..
+                }) => lit.parse().unwrap(),
+                _ => elem,
+            });
+            return Ok(elems.collect());
+        }
         Ok(Expr::Paren(expr)) => return Ok(vec![*expr.expr]),
         _ => (),
     }
