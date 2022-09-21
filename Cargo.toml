@@ -1,6 +1,6 @@
 [package]
 name = "sort_by_derive"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 license = "Unlicense"
 description = "Derive macro SortBy and helper macros EnumAccessor and EnumSequence, deriving traits `Ord`, `PartialOrd`, `Eq`, `PartialEq` and `Hash` for structs and enums that can't automatically derive from those traits."
