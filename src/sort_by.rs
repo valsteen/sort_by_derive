@@ -1,4 +1,5 @@
 use proc_macro2::TokenStream;
+use quote::{quote_spanned, ToTokens};
 
 use syn::{
     self, spanned::Spanned, Attribute, Data, DataStruct, DeriveInput, Error, Expr, Fields,
@@ -18,7 +19,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         .iter()
         .filter(|i| i.path.get_ident().map(|i| i == "sort_by") == Some(true))
     {
-        match parse_meta(attr) {
+        match parse_outer(attr) {
             Ok(mut vec) => sortable_expressions.append(&mut vec),
             _ => {
                 return Error::new(attr.span(), HELP_SORTBY).into_compile_error();
@@ -46,7 +47,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
 
     let mut iter_sort_expressions = sortable_expressions.iter();
     let ord_statement = if let Some(sort_expression) = iter_sort_expressions.next() {
-        quote::quote! {
+        quote_spanned! { sort_expression.span() =>
             core::cmp::Ord::cmp(&self.#sort_expression, &other.#sort_expression)
         }
     } else {
@@ -58,15 +59,20 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     };
 
     let ord_statement = iter_sort_expressions.fold(ord_statement, |ord_statement, field_name| {
-        quote::quote! {
+        syn::parse_quote_spanned! {field_name.span() =>
             #ord_statement.then_with(|| self.#field_name.cmp(&other.#field_name))
         }
     });
 
+    let hash_expressions: Vec<Expr> = sortable_expressions
+        .iter()
+        .map(|expr| syn::parse_quote_spanned!(expr.span() => self.#expr.hash(state)))
+        .collect();
+
     quote::quote_spanned! {input_span =>
         impl std::hash::Hash for #struct_name {
             fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-                #(self.#sortable_expressions.hash(state));*;
+                #(#hash_expressions);*;
             }
         }
 
@@ -106,7 +112,7 @@ fn parse_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
             continue;
         }
 
-        let expr: Expr = syn::parse_str(field.ident.unwrap().to_string().as_str()).unwrap();
+        let expr: Expr = syn::parse2(field.ident.to_token_stream()).unwrap();
         sortable_expressions.push(expr);
 
         if attrs.next().is_some() {
@@ -119,15 +125,14 @@ fn parse_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
     Ok(sortable_expressions)
 }
 
-fn parse_meta(attr: &Attribute) -> Result<Vec<Expr>, ()> {
+fn parse_outer(attr: &Attribute) -> Result<Vec<Expr>, ()> {
     if let Ok(Meta::List(list)) = attr.parse_meta() {
         let mut sortable_fields = Vec::new();
         let mut valid = true;
         for name in list.nested {
             match name {
                 NestedMeta::Meta(Meta::Path(p)) => {
-                    let expr: Expr =
-                        syn::parse_str(p.get_ident().unwrap().to_string().as_str()).unwrap();
+                    let expr: Expr = syn::parse2(p.get_ident().to_token_stream()).unwrap();
                     sortable_fields.push(expr)
                 }
                 NestedMeta::Lit(Lit::Str(l)) => {
@@ -145,7 +150,7 @@ fn parse_meta(attr: &Attribute) -> Result<Vec<Expr>, ()> {
         }
     }
 
-    match syn::parse_str::<Expr>(attr.tokens.to_string().as_str()) {
+    match syn::parse2::<Expr>(attr.tokens.clone()) {
         Ok(Expr::Tuple(tuple)) => return Ok(tuple.elems.into_iter().collect()),
         Ok(Expr::Paren(expr)) => return Ok(vec![*expr.expr]),
         _ => (),
