@@ -23,7 +23,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
             Ok(mut vec) => sortable_expressions.append(&mut vec),
             _ => {
                 return Error::new(attr.span(), HELP_SORTBY).into_compile_error();
-            },
+            }
         }
     }
 

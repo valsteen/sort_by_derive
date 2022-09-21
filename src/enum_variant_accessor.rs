@@ -346,7 +346,7 @@ mod test {
     use rust_format::Formatter;
 
     #[test]
-    fn test_this() {
+    fn test_enum() {
         let input = syn::parse_quote! {
             #[accessor(acc1: usize, (A,C))]
             #[accessor(acc2: u8)]
@@ -355,7 +355,7 @@ mod test {
                 A(b),
                 C(d),
                 D(g),
-                G(x),
+                G(x,y,z),
                 H { acc1: usize, acc2: u8, acc3: String }
             }
         };
@@ -376,60 +376,100 @@ mod test {
 impl SomeEnumAccessor for SomeEnum {
     fn acc1(&self) -> std::option::Option<&usize> {
         match self {
-            Self::A(_) => std::option::Option::None,
-            Self::C(_) => std::option::Option::None,
-            Self::D(x) => std::option::Option::Some(&x.acc1),
-            Self::G(x) => std::option::Option::Some(&x.acc1),
+            Self::A(..) => std::option::Option::None,
+            Self::C(..) => std::option::Option::None,
+            Self::D(x, ..) => std::option::Option::Some(&x.acc1),
+            Self::G(x, ..) => std::option::Option::Some(&x.acc1),
             Self::H { acc1, .. } => std::option::Option::Some(acc1),
         }
     }
     fn acc1_mut(&mut self) -> std::option::Option<&mut usize> {
         match self {
-            Self::A(_) => std::option::Option::None,
-            Self::C(_) => std::option::Option::None,
-            Self::D(x) => std::option::Option::Some(&mut x.acc1),
-            Self::G(x) => std::option::Option::Some(&mut x.acc1),
+            Self::A(..) => std::option::Option::None,
+            Self::C(..) => std::option::Option::None,
+            Self::D(x, ..) => std::option::Option::Some(&mut x.acc1),
+            Self::G(x, ..) => std::option::Option::Some(&mut x.acc1),
             Self::H { acc1, .. } => std::option::Option::Some(acc1),
         }
     }
     fn acc2(&self) -> &u8 {
         match self {
-            Self::A(x) => &x.acc2,
-            Self::C(x) => &x.acc2,
-            Self::D(x) => &x.acc2,
-            Self::G(x) => &x.acc2,
+            Self::A(x, ..) => &x.acc2,
+            Self::C(x, ..) => &x.acc2,
+            Self::D(x, ..) => &x.acc2,
+            Self::G(x, ..) => &x.acc2,
             Self::H { acc2, .. } => acc2,
         }
     }
     fn acc2_mut(&mut self) -> &mut u8 {
         match self {
-            Self::A(x) => &mut x.acc2,
-            Self::C(x) => &mut x.acc2,
-            Self::D(x) => &mut x.acc2,
-            Self::G(x) => &mut x.acc2,
+            Self::A(x, ..) => &mut x.acc2,
+            Self::C(x, ..) => &mut x.acc2,
+            Self::D(x, ..) => &mut x.acc2,
+            Self::G(x, ..) => &mut x.acc2,
             Self::H { acc2, .. } => acc2,
         }
     }
     fn acc3(&self) -> std::option::Option<&String> {
         match self {
-            Self::A(x) => std::option::Option::Some(&x.acc3),
-            Self::C(x) => std::option::Option::Some(&x.acc3),
-            Self::D(_) => std::option::Option::None,
-            Self::G(x) => std::option::Option::Some(&x.acc3),
+            Self::A(x, ..) => std::option::Option::Some(&x.acc3),
+            Self::C(x, ..) => std::option::Option::Some(&x.acc3),
+            Self::D(..) => std::option::Option::None,
+            Self::G(x, ..) => std::option::Option::Some(&x.acc3),
             Self::H { acc3, .. } => std::option::Option::Some(acc3),
         }
     }
     fn acc3_mut(&mut self) -> std::option::Option<&mut String> {
         match self {
-            Self::A(x) => std::option::Option::Some(&mut x.acc3),
-            Self::C(x) => std::option::Option::Some(&mut x.acc3),
-            Self::D(_) => std::option::Option::None,
-            Self::G(x) => std::option::Option::Some(&mut x.acc3),
+            Self::A(x, ..) => std::option::Option::Some(&mut x.acc3),
+            Self::C(x, ..) => std::option::Option::Some(&mut x.acc3),
+            Self::D(..) => std::option::Option::None,
+            Self::G(x, ..) => std::option::Option::Some(&mut x.acc3),
             Self::H { acc3, .. } => std::option::Option::Some(acc3),
         }
     }
 }
 "#
         );
+    }
+
+    #[test]
+    fn test_unit() {
+        let input = syn::parse_quote! {
+            #[accessor(acc1: usize, (B))]
+            enum SomeEnum {
+                A(a),
+                B,
+                C(b)
+            }
+        };
+        let output = crate::enum_variant_accessor::impl_enum_accessor(syn::parse2(input).unwrap());
+        let output = rust_format::RustFmt::default()
+            .format_str(output.to_string())
+            .unwrap();
+        assert_eq!(
+            output,
+            r#"pub trait SomeEnumAccessor {
+    fn acc1(&self) -> std::option::Option<&usize>;
+    fn acc1_mut(&mut self) -> std::option::Option<&mut usize>;
+}
+impl SomeEnumAccessor for SomeEnum {
+    fn acc1(&self) -> std::option::Option<&usize> {
+        match self {
+            Self::A(x, ..) => std::option::Option::Some(&x.acc1),
+            Self::B => std::option::Option::None,
+            Self::C(x, ..) => std::option::Option::Some(&x.acc1),
+        }
+    }
+    fn acc1_mut(&mut self) -> std::option::Option<&mut usize> {
+        match self {
+            Self::A(x, ..) => std::option::Option::Some(&mut x.acc1),
+            Self::B => std::option::Option::None,
+            Self::C(x, ..) => std::option::Option::Some(&mut x.acc1),
+        }
+    }
+}
+"#
+        )
     }
 }
