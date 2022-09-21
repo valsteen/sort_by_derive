@@ -20,9 +20,9 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         .filter(|i| i.path.get_ident().map(|i| i == "sort_by") == Some(true))
     {
         match parse_outer(attr) {
-            Ok(mut vec) => sortable_expressions.append(&mut vec),
-            _ => {
-                return Error::new(attr.span(), HELP_SORTBY).into_compile_error();
+            Some(mut vec) => sortable_expressions.append(&mut vec),
+            None => {
+                return Error::new(attr.tokens.span(), HELP_SORTBY).into_compile_error();
             }
         }
     }
@@ -112,7 +112,7 @@ fn parse_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
             continue;
         }
 
-        let expr: Expr = syn::parse2(field.ident.to_token_stream()).unwrap();
+        let expr: Expr = syn::parse2(field.ident.to_token_stream())?;
         sortable_expressions.push(expr);
 
         if attrs.next().is_some() {
@@ -125,18 +125,18 @@ fn parse_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
     Ok(sortable_expressions)
 }
 
-fn parse_outer(attr: &Attribute) -> Result<Vec<Expr>, ()> {
+fn parse_outer(attr: &Attribute) -> Option<Vec<Expr>> {
     if let Ok(Meta::List(list)) = attr.parse_meta() {
         let mut sortable_fields = Vec::new();
         let mut valid = true;
         for name in list.nested {
             match name {
                 NestedMeta::Meta(Meta::Path(p)) => {
-                    let expr: Expr = syn::parse2(p.get_ident().to_token_stream()).unwrap();
+                    let expr: Expr = syn::parse2(p.get_ident().to_token_stream()).ok()?;
                     sortable_fields.push(expr)
                 }
                 NestedMeta::Lit(Lit::Str(l)) => {
-                    sortable_fields.push(l.parse().unwrap());
+                    sortable_fields.push(l.parse().ok()?);
                 }
                 _ => {
                     valid = false;
@@ -145,7 +145,7 @@ fn parse_outer(attr: &Attribute) -> Result<Vec<Expr>, ()> {
             }
         }
         if valid {
-            return Ok(sortable_fields);
+            return Some(sortable_fields);
         }
     }
 
@@ -154,16 +154,14 @@ fn parse_outer(attr: &Attribute) -> Result<Vec<Expr>, ()> {
             let elems = tuple.elems.into_iter().map(|elem| match elem {
                 Expr::Lit(ExprLit {
                     lit: Lit::Str(lit), ..
-                }) => lit.parse().unwrap(),
-                _ => elem,
+                }) => lit.parse().ok(),
+                _ => Some(elem),
             });
-            return Ok(elems.collect());
+            elems.collect::<Option<_>>()
         }
-        Ok(Expr::Paren(expr)) => return Ok(vec![*expr.expr]),
-        _ => (),
+        Ok(Expr::Paren(expr)) => Some(vec![*expr.expr]),
+        _ => None,
     }
-
-    Err(())
 }
 
 #[cfg(test)]
