@@ -7,7 +7,7 @@ use syn::{
 
 const ATTR_HELP: &str = "EnumAccessor: Invalid accessor declaration, expected #[accessor(field1: type, (VariantWithoutAccessor1,VariantWithoutAccessor2))]";
 const ENUM_HELP: &str =
-    "EnumAccessor: only variants with one unnamed variant and named variants are supported";
+    "EnumAccessor: only variants with one unnamed parameter, unit and named variants are supported";
 
 struct Accessor {
     ident: Ident,
@@ -112,21 +112,20 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
 
     let mut variants = vec![];
     let mut named_variants = vec![];
+    let mut unit_variants = vec![];
 
     for variant in enu.variants {
         match variant.fields {
-            Fields::Unnamed(f) => {
-                if f.unnamed.len() != 1 {
-                    return syn::Error::new(f.span(), ENUM_HELP).into_compile_error();
-                }
-                variants.push(variant.ident)
+            Fields::Unnamed(_) => {
+                variants.push(variant);
             }
             Fields::Named(_) => {
-                variants.push(variant.ident.clone());
+                variants.push(variant.clone());
                 named_variants.push(variant.ident);
             }
-            _ => {
-                return syn::Error::new(variant.span(), ENUM_HELP).into_compile_error();
+            Fields::Unit => {
+                variants.push(variant.clone());
+                unit_variants.push(variant.ident.clone());
             }
         }
     }
@@ -186,51 +185,127 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
         };
 
         for except in accessor.except.iter() {
-            if !variants.iter().any(|i| i == except) {
+            if !variants.iter().any(|i| &i.ident == except) {
                 return syn::Error::new(except.span(), format!("variant {except} not found"))
                     .into_compile_error();
             }
         }
 
         for variant in variants.iter() {
+            let span = variant.span();
+            let variant_ident = &variant.ident;
+
             match (
                 accessor.except.is_empty(),
-                accessor.except.contains(variant),
-                named_variants.contains(variant),
+                accessor.except.contains(variant_ident),
+                named_variants.contains(variant_ident),
             ) {
                 (true, _, false) => {
+                    if unit_variants.contains(variant_ident) {
+                        let mut err = syn::Error::new(
+                            accessor.span,
+                            format!("Unit variant {variant_ident} must be included as exception"),
+                        );
+                        err.combine(syn::Error::new(variant.span(), format!("Variant {variant_ident} is a unit type, and must be added to exceptions for `{accessor_name}`")));
+                        return err.into_compile_error();
+                    }
+                    let mut span = span;
+                    if let Some(f) = variant.fields.iter().next() {
+                        span = f.span()
+                    }
+                    let mut accessor_name = accessor_name.clone();
+                    accessor_name.set_span(span);
                     ro_variants.push(
-                        quote::quote_spanned!(span => Self::#variant(x) => &x.#accessor_name),
+                        quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &x.#accessor_name),
                     );
                     mut_variants.push(
-                        quote::quote_spanned!(span => Self::#variant(x) => &mut x.#accessor_name),
+                        quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &mut x.#accessor_name),
                     );
                 }
                 (true, _, true) => {
+                    let span = if let Some(f) = variant
+                        .fields
+                        .iter()
+                        .find(|f| f.ident.as_ref() == Some(accessor_name))
+                    {
+                        f.span()
+                    } else {
+                        let mut err = syn::Error::new(
+                            accessor.span,
+                            format!("No such field '{accessor_name}' on variant {variant_ident}"),
+                        );
+                        err.combine(syn::Error::new(
+                            variant.span(),
+                            format!("{accessor_name} is missing from {variant_ident}"),
+                        ));
+                        return err.into_compile_error();
+                    };
+                    let mut accessor_name = accessor_name.clone();
+                    accessor_name.set_span(span);
                     ro_variants.push(
-                        quote::quote_spanned!(span => Self::#variant{#accessor_name, ..} => #accessor_name),
+                        quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => #accessor_name),
                     );
                     mut_variants.push(
-                        quote::quote_spanned!(span => Self::#variant{#accessor_name, ..} => #accessor_name),
+                        quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => #accessor_name),
                     );
                 }
                 (_, true, false) => {
-                    ro_variants.push(quote::quote_spanned!(span => Self::#variant(_) => std::option::Option::None));
-                    mut_variants
-                        .push(quote::quote_spanned!(span => Self::#variant(_) => std::option::Option::None));
+                    let mut span = span;
+                    if let Some(f) = variant.fields.iter().next() {
+                        span = f.span()
+                    }
+                    if unit_variants.contains(variant_ident) {
+                        ro_variants.push(quote::quote_spanned!(span => Self::#variant_ident => std::option::Option::None));
+                        mut_variants
+                            .push(quote::quote_spanned!(span => Self::#variant_ident => std::option::Option::None));
+                    } else {
+                        ro_variants.push(quote::quote_spanned!(span => Self::#variant_ident(..) => std::option::Option::None));
+                        mut_variants
+                            .push(quote::quote_spanned!(span => Self::#variant_ident(..) => std::option::Option::None));
+                    }
                 }
                 (_, true, true) => {
-                    ro_variants.push(quote::quote_spanned!(span => Self::#variant{..} => std::option::Option::None));
+                    ro_variants.push(quote::quote_spanned!(span => Self::#variant_ident{..} => std::option::Option::None));
                     mut_variants
-                        .push(quote::quote_spanned!(span => Self::#variant{..} => std::option::Option::None));
+                        .push(quote::quote_spanned!(span => Self::#variant_ident{..} => std::option::Option::None));
                 }
                 (false, false, false) => {
-                    ro_variants.push(quote::quote_spanned!(span => Self::#variant(x) => std::option::Option::Some(&x.#accessor_name)));
-                    mut_variants.push(quote::quote_spanned!(span => Self::#variant(x) => std::option::Option::Some(&mut x.#accessor_name)));
+                    if unit_variants.contains(variant_ident) {
+                        let mut err = syn::Error::new(
+                            accessor.span,
+                            format!("Unit variant {variant_ident} must be included as exception"),
+                        );
+                        err.combine(syn::Error::new(variant.span(), format!("Variant {variant_ident} is a unit type, and must be added to exceptions for `{accessor_name}`")));
+                        return err.into_compile_error();
+                    }
+                    let span = variant.fields.iter().next().unwrap().span();
+                    let mut accessor_name = accessor_name.clone();
+                    accessor_name.set_span(span);
+                    ro_variants.push(quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&x.#accessor_name)));
+                    mut_variants.push(quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&mut x.#accessor_name)));
                 }
                 (false, false, true) => {
-                    ro_variants.push(quote::quote_spanned!(span => Self::#variant{#accessor_name, ..} => std::option::Option::Some(#accessor_name)));
-                    mut_variants.push(quote::quote_spanned!(span => Self::#variant{#accessor_name, ..}=> std::option::Option::Some(#accessor_name)));
+                    let span = if let Some(f) = variant
+                        .fields
+                        .iter()
+                        .find(|f| f.ident.as_ref() == Some(accessor_name))
+                    {
+                        f.span()
+                    } else {
+                        let mut err = syn::Error::new(
+                            accessor.span,
+                            format!("No such field '{accessor_name}' on variant {variant_ident}"),
+                        );
+                        err.combine(syn::Error::new(
+                            variant.span(),
+                            format!("{accessor_name} is missing from {variant_ident}"),
+                        ));
+                        return err.into_compile_error();
+                    };
+                    let mut accessor_name = accessor_name.clone();
+                    accessor_name.set_span(span);
+                    ro_variants.push(quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => std::option::Option::Some(#accessor_name)));
+                    mut_variants.push(quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..}=> std::option::Option::Some(#accessor_name)));
                 }
             };
         }

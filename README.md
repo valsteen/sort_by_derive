@@ -218,5 +218,5 @@ Conversely, separate structs such as `NoteOn` may derive from `SortBy` in order 
 
 ## Limitations
 
-- `EnumAccessor` doesn't work with enum variants that have multiple unnamed parameters ( for instance : `Variant(u8,16)` ).
+- On unnamed variants, `EnumAccessor` only considers the first parameter.
 - struct-level `sort_by` attribute always come before field-level attributes.
