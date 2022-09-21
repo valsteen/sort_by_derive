@@ -153,7 +153,9 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
     }
 
     if accessors.is_empty() {
-        return syn::Error::new(input_span, r#"Missing accessor declaration, expected #[accessor(field1: type, (ExceptionVariant1,ExceptionVariant2))]"#).into_compile_error();
+        return quote::quote! {
+            compile_error!(r#"Missing accessor declaration, expected #[accessor(field1: type, (ExceptionVariant1,ExceptionVariant2))]"#);
+        };
     }
 
     let extension_trait = Ident::new(format!("{ident}Accessor").as_str(), input_span);

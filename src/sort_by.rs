@@ -51,11 +51,9 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
             core::cmp::Ord::cmp(&self.#sort_expression, &other.#sort_expression)
         }
     } else {
-        return Error::new(
-            input_span,
-            r#"SortBy: no field to sort on. Mark fields to sort on with #[sort_by]"#,
-        )
-        .into_compile_error();
+        return quote::quote! {
+            compile_error!(r#"SortBy: no field to sort on. Mark fields to sort on with #[sort_by]"#);
+        };
     };
 
     let ord_statement = iter_sort_expressions.fold(ord_statement, |ord_statement, field_name| {
