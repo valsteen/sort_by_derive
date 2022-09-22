@@ -144,14 +144,6 @@ fn make_match_arms(
                 quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &#modifier x.#accessor_name),
             )
         }
-        (true, _, Fields::Named(fields)) => {
-            let span = get_named_variant_field_span(variant, accessor, fields)?;
-            let mut accessor_name = accessor_name.clone();
-            accessor_name.set_span(span);
-            Ok(
-                quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => #accessor_name),
-            )
-        }
         (false, false, Fields::Unnamed(..)) => {
             let span = variant.fields.iter().next().unwrap().span();
             let mut accessor_name = accessor_name.clone();
@@ -159,6 +151,14 @@ fn make_match_arms(
 
             Ok(
                 quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&#modifier x.#accessor_name)),
+            )
+        }
+        (true, _, Fields::Named(fields)) => {
+            let span = get_named_variant_field_span(variant, accessor, fields)?;
+            let mut accessor_name = accessor_name.clone();
+            accessor_name.set_span(span);
+            Ok(
+                quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => #accessor_name),
             )
         }
         (false, false, Fields::Named(fields)) => {
