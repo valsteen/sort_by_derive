@@ -72,6 +72,16 @@ Attributes are declared at top-level.
 
 Methods without arguments ( i.e. only `&self` are also supported ). It takes the form: `#[accessor(method_name(): type)]`.
 
+To avoid name clashes, accessors can be given an alias by using `as`:
+
+```rust
+#[derive(EnumAccessor)]
+#[accessor(name as othername: type, (Exception1,Exception2))]
+enum E {
+
+}
+```
+
 #### Example
 
 Say we have a series of midi events, they are very similar but with slight variations - they always have some timing information but they may not always have a pitch or channel. 
@@ -230,6 +240,8 @@ fn test_sum() {
 ### EnumSequence
 
 Simply derive `EnumSequence`, and you get `enum_sequence(&self)` which returns a `usize`, starting from `0` and incrementing for each variant.
+
+When using enums of enums, creating an accessor to the inner enum's sequence may create a method name ambiguity. To mitigate this, a custom accessor name can be chosen by using `as`, for instance `#[accessor(enum_sequence() as inner_sequence: usize)]`
 
 #### Example
 

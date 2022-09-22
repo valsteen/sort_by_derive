@@ -2,8 +2,8 @@ use either::Either;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote_spanned, ToTokens};
 use syn::{
-    self, punctuated::Pair, spanned::Spanned, Attribute, Data, DeriveInput, Expr, ExprParen,
-    ExprTuple, ExprType, Fields, FieldsNamed, GenericParam, Token, Type, Variant,
+    self, punctuated::Pair, spanned::Spanned, Attribute, Data, DeriveInput, Expr, ExprCall,
+    ExprParen, ExprTuple, ExprType, Fields, FieldsNamed, GenericParam, Token, Type, Variant,
 };
 
 const ATTR_HELP: &str = "EnumAccessor: Invalid accessor declaration, expected #[accessor(field1: type, (VariantWithoutAccessor1,VariantWithoutAccessor2))]";
@@ -12,6 +12,7 @@ const ENUM_HELP: &str =
 
 struct Accessor {
     ident: Ident,
+    alias: Ident,
     ty: Type,
     except: Vec<Ident>,
     span: Span,
@@ -59,33 +60,58 @@ fn parse_tuple(expr: &ExprTuple) -> Option<Accessor> {
     Some(accessor)
 }
 
+fn ident_from_call(call: &ExprCall) -> Option<Ident> {
+    match call.func.as_ref() {
+        Expr::Path(p) => Some(p.path.get_ident()?.clone()),
+        _ => None,
+    }
+}
+
 fn parse_ty(expr: &ExprType) -> Option<Accessor> {
-    match expr.expr.as_ref() {
-        Expr::Path(p) => Some(Accessor {
-            ident: p.path.get_ident()?.clone(),
-            ty: expr.ty.as_ref().clone(),
-            except: vec![],
-            span: expr.span(),
-            is_call: false,
-        }),
+    let (ident, alias, is_call, span) = match expr.expr.as_ref() {
+        Expr::Path(p) => {
+            let ident = p.path.get_ident()?.clone();
+            (ident.clone(), ident, false, expr.span())
+        }
         Expr::Call(call) => {
-            let ident = match call.func.as_ref() {
-                Expr::Path(p) => p.path.get_ident()?,
-                _ => return None,
-            };
+            let ident = ident_from_call(call)?;
             if !call.args.is_empty() {
                 return None;
             }
-            Some(Accessor {
-                ident: ident.clone(),
-                ty: expr.ty.as_ref().clone(),
-                except: vec![],
-                span: call.span(),
-                is_call: true,
-            })
+            (ident.clone(), ident, true, call.span())
         }
-        _ => None,
-    }
+        Expr::Cast(expr) => {
+            let alias = if let Type::Path(path) = expr.ty.as_ref() {
+                path.path.get_ident()?.clone()
+            } else {
+                return None;
+            };
+            match expr.expr.as_ref() {
+                Expr::Path(path) => {
+                    let ident = path.path.get_ident()?.clone();
+                    (ident, alias, false, expr.span())
+                }
+                Expr::Call(call) => {
+                    let ident = ident_from_call(call)?;
+                    if !call.args.is_empty() {
+                        return None;
+                    }
+                    (ident, alias, true, call.span())
+                }
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+
+    Some(Accessor {
+        ident,
+        alias,
+        ty: expr.ty.as_ref().clone(),
+        except: vec![],
+        span,
+        is_call,
+    })
 }
 
 fn parse_paren(expr: &ExprParen) -> Option<Accessor> {
@@ -260,31 +286,31 @@ fn get_named_variant_field_span(
     Ok(span)
 }
 
-fn make_def(span: Span, is_mut: bool, accessor_name: &Ident, ret: &TokenStream) -> TokenStream {
+fn make_def(span: Span, is_mut: bool, method_name: &Ident, ret: &TokenStream) -> TokenStream {
     let modifier = is_mut.then(|| Token![mut](span));
-    let accessor_name = is_mut
-        .then(|| make_mut(accessor_name, span))
-        .unwrap_or_else(|| accessor_name.clone());
+    let method_name = is_mut
+        .then(|| make_mut(method_name, span))
+        .unwrap_or_else(|| method_name.clone());
 
     quote_spanned! {span =>
-        fn #accessor_name(& #modifier self) -> #ret;
+        fn #method_name(& #modifier self) -> #ret;
     }
 }
 
 fn make_impl(
     span: Span,
     is_mut: bool,
-    accessor_name: &Ident,
+    method_name: &Ident,
     ret: &TokenStream,
     arms: Vec<TokenStream>,
 ) -> TokenStream {
     let modifier = is_mut.then(|| Token![mut](span));
-    let accessor_name = is_mut
-        .then(|| make_mut(accessor_name, span))
-        .unwrap_or_else(|| accessor_name.clone());
+    let method_name = is_mut
+        .then(|| make_mut(method_name, span))
+        .unwrap_or_else(|| method_name.clone());
 
     quote_spanned! {span =>
-        fn #accessor_name(& #modifier self) -> #ret {
+        fn #method_name(& #modifier self) -> #ret {
             match self {
                 #(#arms),*
             }
@@ -365,7 +391,7 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
         }
 
         let span = accessor.span;
-        let accessor_name = &accessor.ident;
+        let method_name = &accessor.alias;
 
         let variations = if accessor.is_call {
             Either::Left([AccessType::Call])
@@ -387,14 +413,14 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
             accessor_impls.push(make_impl(
                 span,
                 access_type == AccessType::Mut,
-                accessor_name,
+                method_name,
                 &ret,
                 match_arms,
             ));
             accessor_defs.push(make_def(
                 span,
                 access_type == AccessType::Mut,
-                accessor_name,
+                method_name,
                 &ret,
             ));
         }
@@ -433,15 +459,16 @@ mod test {
     fn test_enum() {
         let input = syn::parse_quote! {
             #[accessor(acc1: usize, (A,C))]
-            #[accessor(acc2: u8)]
+            #[accessor(acc2 as get_u8: u8)]
             #[accessor(acc3: String, (D))]
             #[accessor(acc4(): String, (D))]
+            #[accessor(acc5() as other: String, (D))]
             enum SomeEnum {
                 A(b),
                 C(d),
                 D(g),
                 G(x,y,z),
-                H { acc1: usize, acc2: u8, acc3: String, acc4: fn() -> String }
+                H { acc1: usize, acc2: u8, acc3: String, acc4: fn() -> String, acc5: fn() -> String }
             }
         };
         let output = crate::enum_variant_accessor::impl_enum_accessor(syn::parse2(input).unwrap());
@@ -453,11 +480,12 @@ mod test {
             r#"trait SomeEnumAccessor {
     fn acc1(&self) -> std::option::Option<&usize>;
     fn acc1_mut(&mut self) -> std::option::Option<&mut usize>;
-    fn acc2(&self) -> &u8;
-    fn acc2_mut(&mut self) -> &mut u8;
+    fn get_u8(&self) -> &u8;
+    fn get_u8_mut(&mut self) -> &mut u8;
     fn acc3(&self) -> std::option::Option<&String>;
     fn acc3_mut(&mut self) -> std::option::Option<&mut String>;
     fn acc4(&self) -> std::option::Option<String>;
+    fn other(&self) -> std::option::Option<String>;
 }
 impl SomeEnumAccessor for SomeEnum {
     fn acc1(&self) -> std::option::Option<&usize> {
@@ -478,7 +506,7 @@ impl SomeEnumAccessor for SomeEnum {
             Self::H { acc1, .. } => std::option::Option::Some(acc1),
         }
     }
-    fn acc2(&self) -> &u8 {
+    fn get_u8(&self) -> &u8 {
         match self {
             Self::A(x, ..) => &x.acc2,
             Self::C(x, ..) => &x.acc2,
@@ -487,7 +515,7 @@ impl SomeEnumAccessor for SomeEnum {
             Self::H { acc2, .. } => acc2,
         }
     }
-    fn acc2_mut(&mut self) -> &mut u8 {
+    fn get_u8_mut(&mut self) -> &mut u8 {
         match self {
             Self::A(x, ..) => &mut x.acc2,
             Self::C(x, ..) => &mut x.acc2,
@@ -521,6 +549,15 @@ impl SomeEnumAccessor for SomeEnum {
             Self::D(..) => std::option::Option::None,
             Self::G(x, ..) => std::option::Option::Some(x.acc4()),
             Self::H { acc4, .. } => std::option::Option::Some(acc4()),
+        }
+    }
+    fn other(&self) -> std::option::Option<String> {
+        match self {
+            Self::A(x, ..) => std::option::Option::Some(x.acc5()),
+            Self::C(x, ..) => std::option::Option::Some(x.acc5()),
+            Self::D(..) => std::option::Option::None,
+            Self::G(x, ..) => std::option::Option::Some(x.acc5()),
+            Self::H { acc5, .. } => std::option::Option::Some(acc5()),
         }
     }
 }
