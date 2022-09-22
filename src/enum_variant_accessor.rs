@@ -100,19 +100,12 @@ fn make_mut(ident: &Ident, span: Span) -> Ident {
 }
 
 fn get_ret(span: Span, is_optional: bool, is_mut: bool, typ: &Type) -> TokenStream {
-    match (is_optional, is_mut) {
-        (true, true) => {
-            quote::quote_spanned!(span => std::option::Option<&mut #typ>)
-        }
-        (false, true) => {
-            quote::quote_spanned!(span => &mut #typ)
-        }
-        (true, false) => {
-            quote::quote_spanned!(span => std::option::Option<&#typ>)
-        }
-        (false, false) => {
-            quote::quote_spanned!(span => &#typ)
-        }
+    let modifier = is_mut.then(|| Token![mut](span));
+
+    if is_optional {
+        quote::quote_spanned!(span => std::option::Option<&#modifier #typ>)
+    } else {
+        quote::quote_spanned!(span => &#modifier #typ)
     }
 }
 
@@ -124,6 +117,7 @@ fn make_match_arms(
     let span = variant.span();
     let variant_ident = &variant.ident;
     let accessor_name = &accessor.ident;
+    let modifier = is_mut.then(|| Token![mut](span));
 
     match (
         accessor.except.is_empty(),
@@ -145,13 +139,10 @@ fn make_match_arms(
             }
             let mut accessor_name = accessor_name.clone();
             accessor_name.set_span(span);
-            if is_mut {
-                Ok(
-                    quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &mut x.#accessor_name),
-                )
-            } else {
-                Ok(quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &x.#accessor_name))
-            }
+
+            Ok(
+                quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &#modifier x.#accessor_name),
+            )
         }
         (true, _, Fields::Named(fields)) => {
             let span = get_named_variant_field_span(variant, accessor, fields)?;
@@ -159,6 +150,24 @@ fn make_match_arms(
             accessor_name.set_span(span);
             Ok(
                 quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => #accessor_name),
+            )
+        }
+        (false, false, Fields::Unnamed(..)) => {
+            let span = variant.fields.iter().next().unwrap().span();
+            let mut accessor_name = accessor_name.clone();
+            accessor_name.set_span(span);
+
+            Ok(
+                quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&#modifier x.#accessor_name)),
+            )
+        }
+        (false, false, Fields::Named(fields)) => {
+            let span = get_named_variant_field_span(variant, accessor, fields)?;
+            let mut accessor_name = accessor_name.clone();
+            accessor_name.set_span(span);
+
+            Ok(
+                quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..}=> std::option::Option::Some(#accessor_name)),
             )
         }
         (_, true, Fields::Unit) => {
@@ -170,29 +179,6 @@ fn make_match_arms(
                 span = f.span()
             }
             Ok(quote::quote_spanned!(span => Self::#variant_ident(..) => std::option::Option::None))
-        }
-        (false, false, Fields::Unnamed(..)) => {
-            let span = variant.fields.iter().next().unwrap().span();
-            let mut accessor_name = accessor_name.clone();
-            accessor_name.set_span(span);
-            if is_mut {
-                Ok(
-                    quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&mut x.#accessor_name)),
-                )
-            } else {
-                Ok(
-                    quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&x.#accessor_name)),
-                )
-            }
-        }
-        (false, false, Fields::Named(fields)) => {
-            let span = get_named_variant_field_span(variant, accessor, fields)?;
-            let mut accessor_name = accessor_name.clone();
-            accessor_name.set_span(span);
-
-            Ok(
-                quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..}=> std::option::Option::Some(#accessor_name)),
-            )
         }
     }
 }
