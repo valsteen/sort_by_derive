@@ -67,8 +67,30 @@ impl core::cmp::Ord for Something {
 
 Attributes are declared at top-level.
 
-- `#[accessor(name: type)]` will derive the accessor methods `fn name(&self) -> &type;` and`fn name_mut(&mut self) -> &mut type;`, and return a reference to the field of the same name on any variant.
-- `#[accessor(name: type, (Exception1,Exception2))]` derive the same accessor methods, but the return type will be `Option<&type>` and `Option<&mut type>`. The provided comma-separated list of variants are exceptions and will return `None`.
+```rust
+#[derive(EnumAccessor)]
+#[accessor(name_of_the_field: type_of_the_field)]
+#[accessor2(name_of_other_field: type_of_the_other_field)]
+enum E {
+    Variant1(X),
+    Variant2(Y),
+}
+```
+
+This will derive the accessor methods `fn name(&self) -> &type;` and`fn name_mut(&mut self) -> &mut type;`, and return a reference to the field of the same name on any variant.
+
+```rust
+#[derive(EnumAccessor)]
+#[accessor(name: type, (Variant3,Variant4))]
+enum E {
+    Variant1(X),  // calling `name` on a E::Variant1 returns Some(&X.type)
+    Variant2(Y),  // calling `name` on a E::Variant2 returns Some(&Y.type)
+    Variant3(Z),  // calling `name` on a E::Variant3 returns None
+    Variant4(A)   // calling `name` on a E::Variant4 returns None
+}
+```
+
+This derives the same accessor methods, but the return type will be `Option<&type>` and `Option<&mut type>`. The provided comma-separated list of variants are exceptions and will return `None`.
 
 Methods without arguments ( i.e. only `&self` are also supported ). It takes the form: `#[accessor(method_name(): type)]`.
 
