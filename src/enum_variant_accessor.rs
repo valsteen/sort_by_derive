@@ -2,7 +2,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::ToTokens;
 use syn::{
     self, punctuated::Pair, spanned::Spanned, Attribute, Data, DeriveInput, Expr, ExprParen,
-    ExprTuple, ExprType, Fields, FieldsNamed, Type, Variant,
+    ExprTuple, ExprType, Fields, FieldsNamed, Token, Type, Variant,
 };
 
 const ATTR_HELP: &str = "EnumAccessor: Invalid accessor declaration, expected #[accessor(field1: type, (VariantWithoutAccessor1,VariantWithoutAccessor2))]";
@@ -99,10 +99,28 @@ fn make_mut(ident: &Ident, span: Span) -> Ident {
     Ident::new(format!("{ident}_mut").as_str(), span)
 }
 
+fn get_ret(span: Span, is_optional: bool, is_mut: bool, typ: &Type) -> TokenStream {
+    match (is_optional, is_mut) {
+        (true, true) => {
+            quote::quote_spanned!(span => std::option::Option<&mut #typ>)
+        }
+        (false, true) => {
+            quote::quote_spanned!(span => &mut #typ)
+        }
+        (true, false) => {
+            quote::quote_spanned!(span => std::option::Option<&#typ>)
+        }
+        (false, false) => {
+            quote::quote_spanned!(span => &#typ)
+        }
+    }
+}
+
 fn make_match_arms(
     variant: &Variant,
     accessor: &Accessor,
-) -> Result<(TokenStream, TokenStream), syn::Error> {
+    is_mut: bool,
+) -> Result<TokenStream, syn::Error> {
     let span = variant.span();
     let variant_ident = &variant.ident;
     let accessor_name = &accessor.ident;
@@ -127,51 +145,54 @@ fn make_match_arms(
             }
             let mut accessor_name = accessor_name.clone();
             accessor_name.set_span(span);
-            Ok((
-                quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &x.#accessor_name),
-                quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &mut x.#accessor_name),
-            ))
+            if is_mut {
+                Ok(
+                    quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &mut x.#accessor_name),
+                )
+            } else {
+                Ok(quote::quote_spanned!(span => Self::#variant_ident(x, ..) => &x.#accessor_name))
+            }
         }
         (true, _, Fields::Named(fields)) => {
             let span = get_named_variant_field_span(variant, accessor, fields)?;
             let mut accessor_name = accessor_name.clone();
             accessor_name.set_span(span);
-            Ok((
+            Ok(
                 quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => #accessor_name),
-                quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => #accessor_name),
-            ))
+            )
         }
-        (_, true, Fields::Unit) => Ok((
-            quote::quote_spanned!(span => Self::#variant_ident => std::option::Option::None),
-            quote::quote_spanned!(span => Self::#variant_ident => std::option::Option::None),
-        )),
+        (_, true, Fields::Unit) => {
+            Ok(quote::quote_spanned!(span => Self::#variant_ident => std::option::Option::None))
+        }
         (_, true, Fields::Named(..) | Fields::Unnamed(..)) => {
             let mut span = span;
             if let Some(f) = variant.fields.iter().next() {
                 span = f.span()
             }
-            Ok((
-                quote::quote_spanned!(span => Self::#variant_ident(..) => std::option::Option::None),
-                quote::quote_spanned!(span => Self::#variant_ident(..) => std::option::Option::None),
-            ))
+            Ok(quote::quote_spanned!(span => Self::#variant_ident(..) => std::option::Option::None))
         }
         (false, false, Fields::Unnamed(..)) => {
             let span = variant.fields.iter().next().unwrap().span();
             let mut accessor_name = accessor_name.clone();
             accessor_name.set_span(span);
-            Ok((
-                quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&x.#accessor_name)),
-                quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&mut x.#accessor_name)),
-            ))
+            if is_mut {
+                Ok(
+                    quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&mut x.#accessor_name)),
+                )
+            } else {
+                Ok(
+                    quote::quote_spanned!(span => Self::#variant_ident(x, ..) => std::option::Option::Some(&x.#accessor_name)),
+                )
+            }
         }
         (false, false, Fields::Named(fields)) => {
             let span = get_named_variant_field_span(variant, accessor, fields)?;
             let mut accessor_name = accessor_name.clone();
             accessor_name.set_span(span);
-            Ok((
-                quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => std::option::Option::Some(#accessor_name)),
+
+            Ok(
                 quote::quote_spanned!(span => Self::#variant_ident{#accessor_name, ..}=> std::option::Option::Some(#accessor_name)),
-            ))
+            )
         }
     }
 }
@@ -202,6 +223,38 @@ fn get_named_variant_field_span(
         return Err(err);
     };
     Ok(span)
+}
+
+fn make_def(span: Span, is_mut: bool, accessor_name: &Ident, ret: &TokenStream) -> TokenStream {
+    let modifier = is_mut.then(|| Token![mut](span));
+    let accessor_name = is_mut
+        .then(|| make_mut(accessor_name, span))
+        .unwrap_or_else(|| accessor_name.clone());
+
+    quote::quote_spanned! {span =>
+        fn #accessor_name(& #modifier self) -> #ret;
+    }
+}
+
+fn make_impl(
+    span: Span,
+    is_mut: bool,
+    accessor_name: &Ident,
+    ret: &TokenStream,
+    arms: Vec<TokenStream>,
+) -> TokenStream {
+    let modifier = is_mut.then(|| Token![mut](span));
+    let accessor_name = is_mut
+        .then(|| make_mut(accessor_name, span))
+        .unwrap_or_else(|| accessor_name.clone());
+
+    quote::quote_spanned! {span =>
+        fn #accessor_name(& #modifier self) -> #ret {
+            match self {
+                #(#arms),*
+            }
+        }
+    }
 }
 
 pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
@@ -269,28 +322,6 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
     let mut accessor_defs = Vec::new();
 
     for accessor in accessors.iter() {
-        let span = accessor.span;
-        let accessor_name = &accessor.ident;
-        let mut_accessor_name = make_mut(&accessor.ident, accessor.span);
-
-        let mut ro_match_arms = Vec::new();
-        let mut mut_match_arms = Vec::new();
-
-        let (ro_ret, mut_ret) = {
-            let typ = &accessor.ty;
-            if accessor.except.is_empty() {
-                (
-                    quote::quote_spanned!(span => &#typ),
-                    quote::quote_spanned!(span => &mut #typ),
-                )
-            } else {
-                (
-                    quote::quote_spanned!(span => std::option::Option<&#typ>),
-                    quote::quote_spanned!(span => std::option::Option<&mut #typ>),
-                )
-            }
-        };
-
         for except in accessor.except.iter() {
             if !variants.iter().any(|i| &i.ident == except) {
                 return syn::Error::new(except.span(), format!("variant {except} not found"))
@@ -298,37 +329,23 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
             }
         }
 
-        for match_arms in variants
-            .iter()
-            .map(|variant| make_match_arms(variant, accessor))
-        {
-            match match_arms {
-                Ok((ro_match_arm, mut_match_arm)) => {
-                    ro_match_arms.push(ro_match_arm);
-                    mut_match_arms.push(mut_match_arm);
-                }
-                Err(e) => return e.into_compile_error(),
-            }
+        let span = accessor.span;
+        let accessor_name = &accessor.ident;
+
+        for is_mut in [false, true] {
+            let ret = get_ret(span, !accessor.except.is_empty(), is_mut, &accessor.ty);
+            let match_arms = match variants
+                .iter()
+                .map(|variant| make_match_arms(variant, accessor, is_mut))
+                .collect::<Result<Vec<_>, _>>()
+            {
+                Ok(r) => r,
+                Err(err) => return err.into_compile_error(),
+            };
+
+            accessor_impls.push(make_impl(span, is_mut, accessor_name, &ret, match_arms));
+            accessor_defs.push(make_def(span, is_mut, accessor_name, &ret));
         }
-
-        accessor_impls.push(quote::quote_spanned! {span =>
-            fn #accessor_name(&self) -> #ro_ret {
-                match self {
-                    #(#ro_match_arms),*
-                }
-            }
-
-            fn #mut_accessor_name(&mut self) -> #mut_ret {
-                match self {
-                    #(#mut_match_arms),*
-                }
-            }
-        });
-
-        accessor_defs.push(quote::quote_spanned! {span =>
-            fn #accessor_name(&self) -> #ro_ret;
-            fn #mut_accessor_name(&mut self) -> #mut_ret;
-        })
     }
 
     syn::parse_quote_spanned! {input_span =>
