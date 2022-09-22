@@ -3,7 +3,7 @@ use quote::{quote_spanned, ToTokens};
 
 use syn::{
     self, spanned::Spanned, Attribute, Data, DataStruct, DeriveInput, Error, Expr, ExprLit, Fields,
-    FieldsNamed, Lit, Meta, NestedMeta,
+    FieldsNamed, GenericParam, Lit, Meta, NestedMeta,
 };
 
 const HELP_SORTBY: &str = r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, methodcall())]"#;
@@ -67,28 +67,41 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         .map(|expr| syn::parse_quote_spanned!(expr.span() => self.#expr.hash(state)))
         .collect();
 
+    let generics = &input.generics;
+    let where_clause = &input.generics.where_clause;
+    let generics_params = &input
+        .generics
+        .params
+        .iter()
+        .flat_map(|p| match p {
+            GenericParam::Type(t) => Some(&t.ident),
+            GenericParam::Const(t) => Some(&t.ident),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
     quote_spanned! {input_span =>
-        impl std::hash::Hash for #struct_name {
+        impl #generics std::hash::Hash for #struct_name <#(#generics_params),*> #where_clause {
             fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
                 #(#hash_expressions);*;
             }
         }
 
-        impl core::cmp::Eq for #struct_name {}
+        impl #generics core::cmp::Eq for #struct_name <#(#generics_params),*> #where_clause {}
 
-        impl core::cmp::PartialEq<Self> for #struct_name {
+        impl #generics core::cmp::PartialEq<Self> for #struct_name <#(#generics_params),*> #where_clause {
             fn eq(&self, other: &Self) -> bool {
                 self.cmp(other).is_eq()
             }
         }
 
-        impl core::cmp::PartialOrd<Self> for #struct_name {
+        impl #generics core::cmp::PartialOrd<Self> for #struct_name <#(#generics_params),*> #where_clause {
             fn partial_cmp(&self, other: &Self) -> core::option::Option<core::cmp::Ordering> {
                 std::option::Option::Some(self.cmp(other))
             }
         }
 
-        impl core::cmp::Ord for #struct_name {
+        impl #generics core::cmp::Ord for #struct_name <#(#generics_params),*> #where_clause {
             fn cmp(&self, other: &Self) -> core::cmp::Ordering {
                 #ord_statement
             }

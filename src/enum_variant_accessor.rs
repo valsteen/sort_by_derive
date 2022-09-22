@@ -3,7 +3,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{quote_spanned, ToTokens};
 use syn::{
     self, punctuated::Pair, spanned::Spanned, Attribute, Data, DeriveInput, Expr, ExprParen,
-    ExprTuple, ExprType, Fields, FieldsNamed, Token, Type, Variant,
+    ExprTuple, ExprType, Fields, FieldsNamed, GenericParam, Token, Type, Variant,
 };
 
 const ATTR_HELP: &str = "EnumAccessor: Invalid accessor declaration, expected #[accessor(field1: type, (VariantWithoutAccessor1,VariantWithoutAccessor2))]";
@@ -400,12 +400,26 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
         }
     }
 
+    let vis = &input.vis;
+    let generics = &input.generics;
+    let where_clause = &input.generics.where_clause;
+    let generics_params = &input
+        .generics
+        .params
+        .iter()
+        .flat_map(|p| match p {
+            GenericParam::Type(t) => Some(&t.ident),
+            GenericParam::Const(t) => Some(&t.ident),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
     syn::parse_quote_spanned! {input_span =>
-        pub trait #extension_trait {
+        #vis trait #extension_trait #generics #where_clause {
             #(#accessor_defs)*
         }
 
-        impl #extension_trait for #ident {
+        impl #generics #extension_trait <#(#generics_params),*> for #ident <#(#generics_params),*> #where_clause {
             #(#accessor_impls)*
         }
     }
@@ -436,7 +450,7 @@ mod test {
             .unwrap();
         assert_eq!(
             output,
-            r#"pub trait SomeEnumAccessor {
+            r#"trait SomeEnumAccessor {
     fn acc1(&self) -> std::option::Option<&usize>;
     fn acc1_mut(&mut self) -> std::option::Option<&mut usize>;
     fn acc2(&self) -> &u8;
@@ -530,7 +544,7 @@ impl SomeEnumAccessor for SomeEnum {
             .unwrap();
         assert_eq!(
             output,
-            r#"pub trait SomeEnumAccessor {
+            r#"trait SomeEnumAccessor {
     fn acc1(&self) -> std::option::Option<&usize>;
     fn acc1_mut(&mut self) -> std::option::Option<&mut usize>;
 }

@@ -1,7 +1,7 @@
 use proc_macro2::{Ident, TokenStream};
 
 use syn::spanned::Spanned;
-use syn::{Data, DeriveInput, Fields};
+use syn::{Data, DeriveInput, Fields, GenericParam};
 
 const ENUM_HELP: &str = "EnumSequence: Only enums are supported";
 
@@ -34,12 +34,26 @@ pub fn impl_enum_sequence(input: DeriveInput) -> TokenStream {
         })
     }
 
+    let vis = &input.vis;
+    let generics = &input.generics;
+    let where_clause = &input.generics.where_clause;
+    let generics_params = &input
+        .generics
+        .params
+        .iter()
+        .flat_map(|p| match p {
+            GenericParam::Type(t) => Some(&t.ident),
+            GenericParam::Const(t) => Some(&t.ident),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+
     quote::quote_spanned! {input_span =>
-        pub trait #trait_ident {
+        #vis trait #trait_ident #generics #where_clause {
             fn enum_sequence(&self) -> usize;
         }
 
-        impl #trait_ident for #ident {
+        impl #generics #trait_ident <#(#generics_params),*> for #ident <#(#generics_params),*> #where_clause {
             fn enum_sequence(&self) -> usize {
                 match self {
                     #(#match_branches),*
@@ -69,7 +83,8 @@ mod test {
             .unwrap();
 
         assert_eq!(
-            r#"pub trait EEnumSequence {
+            output,
+            r#"trait EEnumSequence {
     fn enum_sequence(&self) -> usize;
 }
 impl EEnumSequence for E {
@@ -82,7 +97,6 @@ impl EEnumSequence for E {
     }
 }
 "#,
-            output
         )
     }
 }
