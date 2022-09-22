@@ -289,4 +289,3 @@ Conversely, separate structs such as `NoteOn` may derive from `SortBy` in order 
 
 - On unnamed variants, `EnumAccessor` only considers the first parameter.
 - struct-level `sort_by` attribute always come before field-level attributes.
-- Generated trait impl do not yet carry the generic arguments, and as a consequence generic structs and enums are not yet supported.
