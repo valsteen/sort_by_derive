@@ -70,6 +70,8 @@ Attributes are declared at top-level.
 - `#[accessor(name: type)]` will derive the accessor methods `fn name(&self) -> &type;` and`fn name_mut(&mut self) -> &mut type;`, and return a reference to the field of the same name on any variant.
 - `#[accessor(name: type, (Exception1,Exception2))]` derive the same accessor methods, but the return type will be `Option<&type>` and `Option<&mut type>`. The provided comma-separated list of variants are exceptions and will return `None`.
 
+Methods without arguments ( i.e. only `&self` are also supported ). It takes the form: `#[accessor(method_name(): type)]`.
+
 #### Example
 
 Say we have a series of midi events, they are very similar but with slight variations - they always have some timing information but they may not always have a pitch or channel. 
@@ -158,6 +160,73 @@ impl NoteAccessor for Note {
 }
 ```
 
+#### Example of method call
+
+The General form is `#[accessor(method():type)]` :
+
+```rust
+#[derive(EnumAccessor)]
+#[accessor(method():type)]
+enum E {
+
+}
+```
+
+As for field access, declaring an exception will make the actual return type an `Option<type>`.
+
+Named fields is supported, it will consider that the named field is of type `Fn() -> type`, and call it.
+
+An intricate example:
+
+```rust
+struct A {
+    f1: u8,
+    f2: u8
+}
+
+impl A {
+    fn sum(&self) -> u8 {
+        self.f1 + self.f2
+    }
+}
+
+struct B {
+    values: Vec<u8>
+}
+
+impl B {
+    fn sum(&self) -> u8 {
+        self.values.iter().sum()
+    }
+}
+
+#[derive(EnumAccessor)]
+#[accessor(sum():u8)]
+enum E {
+    A(A),
+    B(B),
+    C{sum: Box<dyn Fn() -> u8>}
+}
+
+#[test]
+fn test_sum() {
+    let a = E::A(A{ f1: 10, f2: 22 });
+    let b = E::B(B{ values: vec![9,4,3,2] });
+    let factor = Arc::new(AtomicU8::new(1));
+
+    let c = {
+        let factor = factor.clone();
+        E::C { sum: Box::new(move || 21 * factor.load(Ordering::Relaxed)) }
+    };
+
+    assert_eq!(32, a.sum());
+    assert_eq!(18, b.sum());
+    assert_eq!(21, c.sum());
+    factor.store(2, Ordering::Relaxed);
+    assert_eq!(42, c.sum());
+}
+```
+
 ### EnumAccessor
 
 Simply derive `EnumSequence`, and you get `enum_sequence(&self)` which returns a `usize`, starting from `0` and incrementing for each variant.
@@ -220,3 +289,4 @@ Conversely, separate structs such as `NoteOn` may derive from `SortBy` in order 
 
 - On unnamed variants, `EnumAccessor` only considers the first parameter.
 - struct-level `sort_by` attribute always come before field-level attributes.
+- Generated trait impl do not yet carry the generic arguments, and as a consequence generic struct and enums are not yet supported.
