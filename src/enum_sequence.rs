@@ -68,7 +68,6 @@ mod test {
             .format_str(output.to_string())
             .unwrap();
 
-        println!("{}", output);
         assert_eq!(
             r#"pub trait EEnumSequence {
     fn enum_sequence(&self) -> usize;
