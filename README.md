@@ -227,7 +227,7 @@ fn test_sum() {
 }
 ```
 
-### EnumAccessor
+### EnumSequence
 
 Simply derive `EnumSequence`, and you get `enum_sequence(&self)` which returns a `usize`, starting from `0` and incrementing for each variant.
 
@@ -289,4 +289,4 @@ Conversely, separate structs such as `NoteOn` may derive from `SortBy` in order 
 
 - On unnamed variants, `EnumAccessor` only considers the first parameter.
 - struct-level `sort_by` attribute always come before field-level attributes.
-- Generated trait impl do not yet carry the generic arguments, and as a consequence generic struct and enums are not yet supported.
+- Generated trait impl do not yet carry the generic arguments, and as a consequence generic structs and enums are not yet supported.
