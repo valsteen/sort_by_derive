@@ -1,4 +1,4 @@
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::{quote_spanned, ToTokens};
 
 use syn::{
@@ -20,9 +20,12 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         .filter(|i| i.path.get_ident().map(|i| i == "sort_by") == Some(true))
     {
         match parse_outer(attr) {
-            Some(mut vec) => sortable_expressions.append(&mut vec),
-            None => {
+            Ok(mut vec) => sortable_expressions.append(&mut vec),
+            Err(None) => {
                 return Error::new(attr.tokens.span(), HELP_SORTBY).into_compile_error();
+            }
+            Err(Some((span, message))) => {
+                return Error::new(span, message).into_compile_error();
             }
         }
     }
@@ -136,18 +139,19 @@ fn parse_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
     Ok(sortable_expressions)
 }
 
-fn parse_outer(attr: &Attribute) -> Option<Vec<Expr>> {
+fn parse_outer(attr: &Attribute) -> Result<Vec<Expr>, Option<(Span, String)>> {
     if let Ok(Meta::List(list)) = attr.parse_meta() {
         let mut sortable_fields = Vec::new();
         let mut valid = true;
         for name in list.nested {
             match name {
                 NestedMeta::Meta(Meta::Path(p)) => {
-                    let expr: Expr = syn::parse2(p.get_ident().to_token_stream()).ok()?;
+                    let expr: Expr = syn::parse2(p.get_ident().to_token_stream())
+                        .map_err(|err| (p.span(), err.to_string()))?;
                     sortable_fields.push(expr)
                 }
                 NestedMeta::Lit(Lit::Str(l)) => {
-                    sortable_fields.push(l.parse().ok()?);
+                    sortable_fields.push(l.parse().map_err(|err| (l.span(), err.to_string()))?);
                 }
                 _ => {
                     valid = false;
@@ -156,7 +160,7 @@ fn parse_outer(attr: &Attribute) -> Option<Vec<Expr>> {
             }
         }
         if valid {
-            return Some(sortable_fields);
+            return Ok(sortable_fields);
         }
     }
 
@@ -164,14 +168,17 @@ fn parse_outer(attr: &Attribute) -> Option<Vec<Expr>> {
         Ok(Expr::Tuple(tuple)) => {
             let elems = tuple.elems.into_iter().map(|elem| match elem {
                 Expr::Lit(ExprLit {
-                    lit: Lit::Str(lit), ..
-                }) => lit.parse().ok(),
-                _ => Some(elem),
+                              lit: Lit::Str(lit), ..
+                          }) => lit.parse().map_err(|e| Some((lit.span(), e.to_string()))),
+                Expr::Call(_) | Expr::Field(_) | Expr::Path(_) | Expr::MethodCall(_) => {
+                    Ok(elem)
+                }
+                _ => Err(Some((elem.span(), format!("Invalid form: `{}`.\nAllowed forms: `field`, `method()`, `inner.field`, `inner.method()", elem.to_token_stream()))))
             });
-            elems.collect::<Option<_>>()
+            elems.collect::<Result<_, _>>()
         }
-        Ok(Expr::Paren(expr)) => Some(vec![*expr.expr]),
-        _ => None,
+        Ok(Expr::Paren(expr)) => Ok(vec![*expr.expr]),
+        _ => Err(None),
     }
 }
 
@@ -231,7 +238,7 @@ impl core::cmp::Ord for Toto {
     #[test]
     fn test_enum() {
         let input = syn::parse_quote! {
-            #[sort_by(get_something(), something.do_this())]
+            #[sort_by(this, this.that, get_something(), something.do_this())]
             #[accessor(global_time: usize)]
             enum Toto {
                 A(u32),
@@ -248,6 +255,8 @@ impl core::cmp::Ord for Toto {
             output,
             r#"impl std::hash::Hash for Toto {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.this.hash(state);
+        self.this.that.hash(state);
         self.get_something().hash(state);
         self.something.do_this().hash(state);
     }
@@ -265,7 +274,9 @@ impl core::cmp::PartialOrd<Self> for Toto {
 }
 impl core::cmp::Ord for Toto {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
-        core::cmp::Ord::cmp(&self.get_something(), &other.get_something())
+        core::cmp::Ord::cmp(&self.this, &other.this)
+            .then_with(|| self.this.that.cmp(&other.this.that))
+            .then_with(|| self.get_something().cmp(&other.get_something()))
             .then_with(|| self.something.do_this().cmp(&other.something.do_this()))
     }
 }
