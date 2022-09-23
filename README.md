@@ -88,7 +88,6 @@ fn do_something(some_e: &mut E) {
 }
 ```
 
-
 ```rust
 #[derive(EnumAccessor)]
 #[accessor(name: type, (Variant3,Variant4))]
@@ -113,6 +112,8 @@ enum E {
 
 }
 ```
+
+**Note**: this will create an extension trait `{TypeName}Accessor` ( i.e. the type `T` will get a new trait `TAccessor` ). This trait will have the same visibility as the type. When using this type from another module, make sure to bring the trait in scope with `use {TypeName}Accessor`.
 
 #### Example
 
@@ -285,6 +286,8 @@ fn test_sum() {
 Simply derive `EnumSequence`, and you get `enum_sequence(&self)` which returns a `usize`, starting from `0` and incrementing for each variant.
 
 When using enums of enums, creating an accessor to the inner enum's sequence may create a method name ambiguity. To mitigate this, a custom accessor name can be chosen by using `as`, for instance `#[accessor(enum_sequence() as inner_sequence: usize)]`
+
+**Note**: this will create an extension trait `{TypeName}EnumSequence` ( i.e. the type `T` will get a new trait `TEnumSequence` ). This trait will have the same visibility as the type. When using this type from another module, make sure to bring the trait in scope with `use {TypeName}EnumSequence`.
 
 #### Example
 
