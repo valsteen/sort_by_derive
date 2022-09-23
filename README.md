@@ -90,7 +90,7 @@ fn do_something(some_e: &mut E) {
 
 ```rust
 #[derive(EnumAccessor)]
-#[accessor(name: type, (Variant3,Variant4))]
+#[accessor(name: type, except(Variant3,Variant4))]
 enum E {
     Variant1(X),  // calling `name` on a E::Variant1 returns Some(&X.type)
     Variant2(Y),  // calling `name` on a E::Variant2 returns Some(&Y.type)
@@ -107,7 +107,7 @@ To avoid name clashes, accessors can be given an alias by using `as`:
 
 ```rust
 #[derive(EnumAccessor)]
-#[accessor(name as othername: type, (Exception1,Exception2))]
+#[accessor(name as othername: type, except(Exception1,Exception2))]
 enum E {
 
 }
@@ -121,14 +121,14 @@ Say we have a series of midi events, they are very similar but with slight varia
 
 Using `#[accessor(global_time: usize)]`, a `global_time(&self)` method is derived, along with a `global_time_mut(&mut self)`, so without any boilerplate you can access the timing.
 
-By declaring `#[accessor(channel: u8, (CC))]`, `channel(&self)` and `channel_mut(&mut self)` are derived, but they return `Some` for `NoteOn` and `NoteOff`, and `None` for `CC` and `Unsupported`.   
+By declaring `#[accessor(channel: u8, except(CC))]`, `channel(&self)` and `channel_mut(&mut self)` are derived, but they return `Some` for `NoteOn` and `NoteOff`, and `None` for `CC` and `Unsupported`.
 
 
 ```rust
 #[derive(EnumAccessor)]
 #[accessor(global_time: usize)]
-#[accessor(channel: u8, (CC))]
-#[accessor(pitch: u8, (CC, Unsupported))]
+#[accessor(channel: u8, except(CC))]
+#[accessor(pitch: u8, except(CC, Unsupported))]
 enum Note {
     NoteOn(NoteOn),
     NoteOff(NoteOff),
@@ -248,7 +248,7 @@ impl B {
 
 #[derive(EnumAccessor)]
 #[accessor(sum():u8)]
-#[accessor(set(): &mut u8, (B,C))]
+#[accessor(set(): &mut u8, except(B,C))]
 enum E<Get: Fn() -> u8> {
     A(A),
     B(B),
@@ -325,8 +325,8 @@ Imagine the following :
 ```rust
 #[derive(EnumSequence, EnumAccessor, SortBy, Debug)]
 #[accessor(global_time: usize)]
-#[accessor(channel: u8, (CC))]
-#[accessor(pitch: u8, (CC,SomethingElse))]
+#[accessor(channel: u8, except(CC))]
+#[accessor(pitch: u8, except(CC,SomethingElse))]
 #[sort_by(global_time(), channel(), pitch(), enum_sequence())]
 enum Note {
     NoteOn(NoteOn),
