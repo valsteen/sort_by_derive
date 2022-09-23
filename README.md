@@ -79,6 +79,16 @@ enum E {
 
 This will derive the accessor methods `fn name(&self) -> &type;` and`fn name_mut(&mut self) -> &mut type;`, and return a reference to the field of the same name on any variant.
 
+So you can take any `E`, all variants will have `name_of_the_field`, `name_of_the_field_mut`, `name_of_other_field`, `name_of_other_field_mut`
+
+```rust
+fn do_something(some_e: &mut E) {
+    let field_value = *some_e.name_of_the_field() ; // take the value of that field, whatever variant it is
+    *some_e.name_of_the_field_mut() = "somevalue" ; // use the accessor method returning a &mut to the field
+}
+```
+
+
 ```rust
 #[derive(EnumAccessor)]
 #[accessor(name: type, (Variant3,Variant4))]
@@ -92,7 +102,7 @@ enum E {
 
 This derives the same accessor methods, but the return type will be `Option<&type>` and `Option<&mut type>`. The provided comma-separated list of variants are exceptions and will return `None`.
 
-Methods without arguments ( i.e. only `&self` are also supported ). It takes the form: `#[accessor(method_name(): type)]`.
+Methods without arguments ( i.e. only `&self` are also supported ). It takes the form: `#[accessor(method_name(): type)]`. If `type` is a `&mut`, the generated method will take `&mut self` instead of `&self`. This can be useful for accessing mutable derived methods of nested enums.
 
 To avoid name clashes, accessors can be given an alias by using `as`:
 
@@ -220,6 +230,9 @@ impl A {
     fn sum(&self) -> u8 {
         self.f1 + self.f2
     }
+    fn set(&mut self) -> &mut u8 {
+        &mut self.f1
+    }
 }
 
 struct B {
@@ -234,24 +247,32 @@ impl B {
 
 #[derive(EnumAccessor)]
 #[accessor(sum():u8)]
-enum E {
+#[accessor(set(): &mut u8, (B,C))]
+enum E<Get: Fn() -> u8> {
     A(A),
     B(B),
-    C{sum: Box<dyn Fn() -> u8>}
+    C{sum: Get}
 }
 
 #[test]
 fn test_sum() {
-    let a = E::A(A{ f1: 10, f2: 22 });
-    let b = E::B(B{ values: vec![9,4,3,2] });
     let factor = Arc::new(AtomicU8::new(1));
 
-    let c = {
-        let factor = factor.clone();
-        E::C { sum: Box::new(move || 21 * factor.load(Ordering::Relaxed)) }
-    };
+    let [mut a, b, c] = [
+        E::A(A { f1: 10, f2: 22 }),
+        E::B(B { values: vec![9, 4, 3, 2] }),
+        {
+            let factor = factor.clone();
+            E::C {
+                sum: move || 21 * factor.load(Ordering::Relaxed),
+            }
+        }];
 
-    assert_eq!(32, a.sum());
+    assert_eq!(32, a.sum()); // sum() is available without matching against E::A, E::B or E::C
+    if let Some(value) = a.set() { // set() is only available for E::A and returns a &mut u8, so we get a Option<&mut u8>
+        *value = 0;
+    }
+    assert_eq!(22, a.sum());
     assert_eq!(18, b.sum());
     assert_eq!(21, c.sum());
     factor.store(2, Ordering::Relaxed);
