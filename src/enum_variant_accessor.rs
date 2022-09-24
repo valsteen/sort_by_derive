@@ -564,11 +564,11 @@ mod test {
     #[test]
     fn test_enum() {
         let input = syn::parse_quote! {
-            #[accessor(acc1: usize, only(D,G,H))]
+            #[accessor(acc1: usize, Only(D,G,H))]
             #[accessor(acc2 as get_u8: u8)]
-            #[accessor(acc3: String, except(D))]
+            #[accessor(acc3: String, Except(D))]
             #[accessor(acc4(): String, (D))]
-            #[accessor(acc5() as other: String, (D))]
+            #[accessor(acc5() as other: String, Except(D))]
             enum SomeEnum {
                 A(b),
                 C(d),

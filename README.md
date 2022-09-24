@@ -4,7 +4,7 @@ This crate provides 3 derive macros `SortBy`, `EnumAccessor` and `EnumSequence`.
 
 - `SortBy` derives the traits `Ord`, `PartialOrd`, `Eq`, `PartialEq` and `Hash` on structs that can't automatically derive those traits because they contain unorderable fields such as `f32`.
 - On enums and structs, `SortBy` can also implement a `Ord` trait that calls arbitrary methods - this is particularly useful in combination with enum variant accessor methods derived by `EnumAccessor` an `EnumSequence`
-- `EnumAccessor` derives accessor methods to common fields in variants - so you don't need to write yourself `match` statements to access a field with the same name and type on different variants.
+- `EnumAccessor` derives accessor methods to common fields in variants - so you don't need to write yourself `match` statements to access a field with the same name and type on different variants. This feature is similar to [enum_dispatch](https://crates.io/crates/enum_dispatch), but takes a different approach where structs don't need to implement a trait.
 - `EnumSequence` provides a `enum_sequence` method where the first variant returns `0`, the second `1`, etc. This is useful is you want to implement a custom sorting, while the order of declaration of variant is still relevant as a secondary ordering criteria.
 
 ## Usage
@@ -65,12 +65,14 @@ impl core::cmp::Ord for Something {
 
 ### EnumAccessor
 
-Attributes are declared at top-level.
+This derive macro is similar to [enum_dispatch](https://crates.io/crates/enum_dispatch). `enum_dispatch` requires structs to implement a common trait, which can be useful if a common set of functions applies to all variants . `EnumAccessor` takes the opposite approach: common fields and methods are declared at enum level, and you can have variants that don't have a given field or method. This may be more practical if there is a large amount of variants and your only concern is accessing fields, because individual structs just hold data. This is typical for events - they represent a state change and are generally consumed as a whole, individual structs have no code of their own.
+
+After adding `derive(EnumAccessor)` to the enum, fields are declared as `accessor(field: type)` attributes:
 
 ```rust
 #[derive(EnumAccessor)]
 #[accessor(name_of_the_field: type_of_the_field)]
-#[accessor2(name_of_other_field: type_of_the_other_field)]
+#[accessor(name_of_other_field: type_of_the_other_field)]
 enum E {
     Variant1(X),
     Variant2(Y),
@@ -88,9 +90,11 @@ fn do_something(some_e: &mut E) {
 }
 ```
 
+Use `Except` or `Only` if not all variants have a given field:
+
 ```rust
 #[derive(EnumAccessor)]
-#[accessor(name: type, except(Variant3,Variant4))]
+#[accessor(name: type, Except(Variant3,Variant4))]
 enum E {
     Variant1(X),  // calling `name` on a E::Variant1 returns Some(&X.type)
     Variant2(Y),  // calling `name` on a E::Variant2 returns Some(&Y.type)
@@ -203,7 +207,7 @@ impl NoteAccessor for Note {
 }
 ```
 
-#### Example of method call
+#### Method accessor
 
 The General form is `#[accessor(method():type)]` :
 
