@@ -32,7 +32,7 @@ jobs:
           command: test
 
   doc_test:
-    name: Test Suite
+    name: Docs Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
@@ -43,7 +43,8 @@ jobs:
           override: true
       - uses: actions-rs/cargo@v1
         with:
-          command: test --doc
+          command: test
+          args: "--doc"
 
   fmt:
     name: Rustfmt
