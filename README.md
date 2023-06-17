@@ -86,21 +86,6 @@ assert_eq!(Something{a: 1, b: 1}.cmp(&Something{a: 1, b: 2}), Ordering::Less); /
 assert_eq!(Something{a: 2, b: 0}.cmp(&Something{a: 1, b: 0}), Ordering::Greater); // method comparison is equal (0 = 0) so fall back to member comparison
 ```
 
-You can use it the same way with tuple structs:
-
-```rust
-#[derive(SortBy)]
-#[sort_by(somemethod())]
-struct Something (
-  #[sort_by]
-  u16,
-  #[sort_by]
-  u32,
-  f32
-)
-```
-This will expand the same way as a normal struct, with the proper numerical fields.
-
 ### EnumAccessor
 
 This derive macro is similar to [enum_dispatch](https://crates.io/crates/enum_dispatch).
