@@ -1,9 +1,9 @@
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::{Literal, Span, TokenStream};
 use quote::{quote_spanned, ToTokens};
 
 use syn::{
     self, spanned::Spanned, Attribute, Data, DataStruct, DeriveInput, Error, Expr, ExprLit, Fields,
-    FieldsNamed, GenericParam, Lit, Meta, NestedMeta,
+    FieldsNamed, FieldsUnnamed, GenericParam, Lit, Meta, NestedMeta,
 };
 
 const HELP_SORTBY: &str = r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, methodcall())]"#;
@@ -34,24 +34,28 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         Data::Struct(DataStruct {
             fields: Fields::Named(fields),
             ..
-        }) => match parse_fields(fields) {
+        }) => match parse_named_fields(fields) {
+            Ok(mut result) => sortable_expressions.append(&mut result),
+            Err(e) => return e.into_compile_error(),
+        },
+        Data::Struct(DataStruct {
+            fields: Fields::Unnamed(fields),
+            ..
+        }) => match parse_unnamed_fields(fields) {
             Ok(mut result) => sortable_expressions.append(&mut result),
             Err(e) => return e.into_compile_error(),
         },
         Data::Enum(_) => (),
         _ => {
-            return Error::new(
-                input_span,
-                r#"SortBy: expected an enum or a struct with named fields"#,
-            )
-            .into_compile_error();
+            return Error::new(input_span, r#"SortBy: expected an enum or a struct"#)
+                .into_compile_error();
         }
     };
 
     let mut iter_sort_expressions = sortable_expressions.iter();
-    let ord_statement = if let Some(sort_expression) = iter_sort_expressions.next() {
-        quote_spanned! { sort_expression.span() =>
-            core::cmp::Ord::cmp(&self.#sort_expression, &other.#sort_expression)
+    let ord_statement = if let Some(field) = iter_sort_expressions.next() {
+        quote_spanned! { field.span() =>
+            core::cmp::Ord::cmp(&self.#field, &other.#field)
         }
     } else {
         return quote::quote! {
@@ -59,9 +63,9 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         };
     };
 
-    let ord_statement = iter_sort_expressions.fold(ord_statement, |ord_statement, field_name| {
-        syn::parse_quote_spanned! {field_name.span() =>
-            #ord_statement.then_with(|| self.#field_name.cmp(&other.#field_name))
+    let ord_statement = iter_sort_expressions.fold(ord_statement, |ord_statement, field| {
+        syn::parse_quote_spanned! {field.span() =>
+            #ord_statement.then_with(|| self.#field.cmp(&other.#field))
         }
     });
 
@@ -112,7 +116,34 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     }
 }
 
-fn parse_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
+fn parse_unnamed_fields(fields: FieldsUnnamed) -> Result<Vec<Expr>, Error> {
+    let mut sortable_expressions = vec![];
+
+    for (index, field) in fields.unnamed.iter().enumerate() {
+        let span = field.span();
+        let mut attrs = field
+            .attrs
+            .iter()
+            .filter(|i| i.path.get_ident().map_or(false, |i| i == "sort_by"));
+
+        if attrs.next().is_none() {
+            continue;
+        }
+
+        let expr: Expr = syn::parse2(Literal::usize_unsuffixed(index).to_token_stream())?;
+        sortable_expressions.push(expr);
+
+        if attrs.next().is_some() {
+            return Err(Error::new(
+                span,
+                r#"SortBy: expected at most one `sort_by` attribute"#,
+            ));
+        }
+    }
+    Ok(sortable_expressions)
+}
+
+fn parse_named_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
     let mut sortable_expressions = vec![];
 
     for field in fields.named {

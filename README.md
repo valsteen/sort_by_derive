@@ -28,7 +28,7 @@ Fields that should be used for sorting are marked with the attribute `#[sort_by]
 Alternatively, or in combination with, a struct-level or enum-level `#[sort_by(method1(),method2(),attr1,nested.attr)]` can be declared. This top-level declaration takes precedence,
 fields comparison will be considered if top-level comparisons are all `eq`. The top-level `sort_by` attribute takes a list of attributes or method calls; items will be prepended with `self.`.
 
-#### Example
+#### Examples
 
 ```rust
 #[derive(SortBy)]
@@ -74,6 +74,21 @@ impl core::cmp::Ord for Something {
     }
 }
 ```
+
+You can use it the same way with tuple structs:
+
+```rust
+#[derive(SortBy)]
+#[sort_by(somemethod())]
+struct Something (
+  #[sort_by]
+  u16,
+  #[sort_by]
+  u32,
+  f32
+)
+```
+This will expand the same way as a normal struct, with the proper numerical fields.
 
 ### EnumAccessor
 
