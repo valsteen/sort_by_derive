@@ -378,7 +378,7 @@ impl core::cmp::Ord for Toto {
         println!("{output}");
         assert_eq!(
             output,
-            r#"impl<'a, T> std::hash::Hash for ContextWrapper<T>
+            r#"impl<'a, T> std::hash::Hash for ContextWrapper<'a, T>
 where
     T: Ctx,
 {
@@ -386,8 +386,8 @@ where
         self.elapsed.hash(state);
     }
 }
-impl<'a, T> core::cmp::Eq for ContextWrapper<T> where T: Ctx {}
-impl<'a, T> core::cmp::PartialEq<Self> for ContextWrapper<T>
+impl<'a, T> core::cmp::Eq for ContextWrapper<'a, T> where T: Ctx {}
+impl<'a, T> core::cmp::PartialEq<Self> for ContextWrapper<'a, T>
 where
     T: Ctx,
 {
@@ -395,7 +395,7 @@ where
         self.cmp(other).is_eq()
     }
 }
-impl<'a, T> core::cmp::PartialOrd<Self> for ContextWrapper<T>
+impl<'a, T> core::cmp::PartialOrd<Self> for ContextWrapper<'a, T>
 where
     T: Ctx,
 {
@@ -403,7 +403,7 @@ where
         std::option::Option::Some(self.cmp(other))
     }
 }
-impl<'a, T> core::cmp::Ord for ContextWrapper<T>
+impl<'a, T> core::cmp::Ord for ContextWrapper<'a, T>
 where
     T: Ctx,
 {
