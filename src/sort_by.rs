@@ -81,9 +81,9 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         .params
         .iter()
         .flat_map(|p| match p {
-            GenericParam::Type(t) => Some(&t.ident),
-            GenericParam::Const(t) => Some(&t.ident),
-            _ => None,
+            GenericParam::Type(t) => Some(t.ident.to_token_stream()),
+            GenericParam::Const(t) => Some(t.ident.to_token_stream()),
+            GenericParam::Lifetime(t) => Some(t.lifetime.to_token_stream()),
         })
         .collect::<Vec<_>>();
 
@@ -352,6 +352,63 @@ impl core::cmp::PartialOrd<Self> for Toto {
 impl core::cmp::Ord for Toto {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         core::cmp::Ord::cmp(&self.get_something(), &other.get_something())
+    }
+}
+"#
+        );
+    }
+
+    #[test]
+    fn test_lifetime() {
+        let input = syn::parse_quote! {
+            #[derive(SortBy)]
+            pub struct ContextWrapper<'a, T>
+            where T: Ctx,
+            {
+                ctx: Cow<'a, T>,
+                #[sort_by]
+                elapsed: i32,
+            }
+        };
+
+        let output = crate::sort_by::impl_sort_by_derive(syn::parse2(input).unwrap());
+        let output = rust_format::RustFmt::default()
+            .format_str(output.to_string())
+            .unwrap();
+        println!("{output}");
+        assert_eq!(
+            output,
+            r#"impl<'a, T> std::hash::Hash for ContextWrapper<T>
+where
+    T: Ctx,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.elapsed.hash(state);
+    }
+}
+impl<'a, T> core::cmp::Eq for ContextWrapper<T> where T: Ctx {}
+impl<'a, T> core::cmp::PartialEq<Self> for ContextWrapper<T>
+where
+    T: Ctx,
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+impl<'a, T> core::cmp::PartialOrd<Self> for ContextWrapper<T>
+where
+    T: Ctx,
+{
+    fn partial_cmp(&self, other: &Self) -> core::option::Option<core::cmp::Ordering> {
+        std::option::Option::Some(self.cmp(other))
+    }
+}
+impl<'a, T> core::cmp::Ord for ContextWrapper<T>
+where
+    T: Ctx,
+{
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        core::cmp::Ord::cmp(&self.elapsed, &other.elapsed)
     }
 }
 "#
