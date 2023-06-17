@@ -183,13 +183,38 @@ This can be useful for accessing mutable derived methods of nested enums.
 
 To avoid name clashes, accessors can be given an alias by using `as`:
 
-```ignore
+```rust
 use sort_by_derive::EnumAccessor;
 
-// FIXME: Aliasing doesn't prevent *Duplicate accessor* error
+#[derive(EnumAccessor)]
+#[accessor(a as a_attr: u16, except(Variant3))]
+enum E {
+    Variant1 { a: u16 },
+    Variant2 { a: u16, c: u32 },
+    Variant3 { b: u32 },
+}
+
+impl E {
+    fn a(&self) -> bool {
+        // Unrelated work
+        true
+    }
+}
+
+assert_eq!(E::Variant1 { a: 1 }.a(), true);
+assert_eq!(E::Variant1 { a: 1 }.a_attr(), Some(&1));
+assert_eq!(E::Variant2 { a: 1, c: 0 }.a_attr(), Some(&1));
+assert_eq!(E::Variant3 { b: 0 }.a_attr(), None);
+```
+
+**Caveat**: Aliasing doesn't prevent *Duplicate accessor* error:
+
+```compile_fail
+use sort_by_derive::EnumAccessor;
+
 #[derive(EnumAccessor)]
 #[accessor(a: u16, except(Variant3))]
-#[accessor(a as a_big: u32, except(Variant1,Variant2))]
+#[accessor(a as a_big: u32, except(Variant1,Variant2))] // error: Duplicate accessor a
 enum E {
   Variant1 { a: u16 },
   Variant2 { a: u16, c: u32 },
