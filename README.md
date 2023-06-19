@@ -1,3 +1,7 @@
+[![Continuous integration](https://github.com/tlaferriere/sort_by_derive/actions/workflows/rust.yml/badge.svg)](https://github.com/tlaferriere/sort_by_derive/actions/workflows/rust.yml)
+![docs.rs](https://img.shields.io/docsrs/sort_by_derive)
+![Crates.io](https://img.shields.io/crates/v/sort_by_derive)
+![Crates.io](https://img.shields.io/crates/l/sort_by_derive)
 # sort_by_derive
 
 <!-- TOC -->
