@@ -1,7 +1,7 @@
-[![Continuous integration](https://github.com/tlaferriere/sort_by_derive/actions/workflows/rust.yml/badge.svg)](https://github.com/tlaferriere/sort_by_derive/actions/workflows/rust.yml)
-![docs.rs](https://img.shields.io/docsrs/sort_by_derive)
-![Crates.io](https://img.shields.io/crates/v/sort_by_derive)
-![Crates.io](https://img.shields.io/crates/l/sort_by_derive)
+[![GitHub](https://img.shields.io/badge/github-valsteen/sort_by_derive-8da0cb?labelColor=555555&logo=github)](https://github.com/valsteen/sort_by_derive)
+[![Crates.io](https://img.shields.io/crates/v/sort_by_derive)](https://crates.io/crates/sort_by_derive)
+[![docs.rs](https://img.shields.io/docsrs/sort_by_derive)](https://docs.rs/sort_by_derive)
+[![Continuous integration](https://github.com/tlaferriere/sort_by_derive/actions/workflows/rust.yml/badge.svg)](https://github.com/valsteen/sort_by_derive/actions/workflows/rust.yml)
 # sort_by_derive
 
 <!-- TOC -->
