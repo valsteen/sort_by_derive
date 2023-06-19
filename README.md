@@ -2,11 +2,11 @@
 
 <!-- TOC -->
 * [Usage](#usage)
-    * [SortBy](#sortby)
-    * [EnumAccessor](#enumaccessor)
-        * [Field accessor](#field-accessor)
-        * [Method accessor](#method-accessor)
-    * [EnumSequence](#enumsequence)
+* [SortBy](#sortby)
+* [EnumAccessor](#enumaccessor)
+  * [Field accessor](#field-accessor)
+  * [Method accessor](#method-accessor)
+* [EnumSequence](#enumsequence)
 * [All together](#all-together)
 * [Limitations](#limitations)
 <!-- TOC -->
