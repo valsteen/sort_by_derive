@@ -27,7 +27,7 @@ Fields that should be used for sorting are marked with the attribute `#[sort_by]
 Other fields will be ignored.
 
 ```rust
-use std::cmp::Ordering;
+# use std::cmp::Ordering;
 use sort_by_derive::SortBy;
 
 #[derive(SortBy)]
@@ -43,9 +43,9 @@ assert_eq!(Something{a: 1, b: 0}.cmp(&Something{a: 1, b: 1}), Ordering::Equal); 
 You can use it the same way with tuple structs:
 
 ```rust
-use std::cmp::Ordering;
-use sort_by_derive::SortBy;
-
+# use std::cmp::Ordering;
+# use sort_by_derive::SortBy;
+# 
 #[derive(SortBy)]
 struct Something(
     #[sort_by]
@@ -65,9 +65,9 @@ This top-level declaration takes precedence, fields comparison will be considere
 The top-level `sort_by` attribute takes a list of attributes or method calls; items will be prepended with `self.`.
 
 ```rust
-use std::cmp::Ordering;
-use sort_by_derive::SortBy;
-
+# use std::cmp::Ordering;
+# use sort_by_derive::SortBy;
+# 
 #[derive(SortBy)]
 #[sort_by(product())]
 struct Something {
@@ -101,8 +101,8 @@ After adding `derive(EnumAccessor)` to the enum, fields are declared as `accesso
 This will derive the accessor methods `fn name(&self) -> &type;` and`fn name_mut(&mut self) -> &mut type;`, and return a reference to the field of the same name on any variant.
 
 ```rust
-use sort_by_derive::EnumAccessor;
-
+# use sort_by_derive::EnumAccessor;
+#
 #[derive(EnumAccessor)]
 #[accessor(a: u16)]
 #[accessor(b: u16)]
@@ -126,8 +126,8 @@ assert_eq!(*v2.a(), 2);
 So you can take any `E`, all variants will have `a`, `a_mut`, `b`, `b_mut`
 
 ```rust
-use sort_by_derive::EnumAccessor;
-
+# use sort_by_derive::EnumAccessor;
+#
 #[derive(EnumAccessor)]
 #[accessor(a: u16)]
 #[accessor(b: u16)]
@@ -154,8 +154,8 @@ assert_eq!(*v2.a(), 42);
 Use `except` or `only` if not all variants have a given field:
 
 ```rust
-use sort_by_derive::EnumAccessor;
-
+# use sort_by_derive::EnumAccessor;
+#
 #[derive(EnumAccessor)]
 #[accessor(a: u16, only(Variant1, Variant2))]
 #[accessor(c: u32, except(Variant1, Variant3))]
@@ -184,8 +184,8 @@ This can be useful for accessing mutable derived methods of nested enums.
 To avoid name clashes, accessors can be given an alias by using `as`:
 
 ```rust
-use sort_by_derive::EnumAccessor;
-
+# use sort_by_derive::EnumAccessor;
+#
 #[derive(EnumAccessor)]
 #[accessor(a as a_attr: u16, except(Variant3))]
 enum E {
@@ -197,7 +197,7 @@ enum E {
 impl E {
     fn a(&self) -> bool {
         // Unrelated work
-        true
+#        true
     }
 }
 
@@ -210,8 +210,8 @@ assert_eq!(E::Variant3 { b: 0 }.a_attr(), None);
 **Caveat**: Aliasing doesn't prevent *Duplicate accessor* error:
 
 ```compile_fail
-use sort_by_derive::EnumAccessor;
-
+# use sort_by_derive::EnumAccessor;
+# 
 #[derive(EnumAccessor)]
 #[accessor(a: u16, except(Variant3))]
 #[accessor(a as a_big: u32, except(Variant1,Variant2))] // error: Duplicate accessor a
@@ -241,8 +241,8 @@ Using `#[accessor(global_time: usize)]`, a `global_time(&self)` method is derive
 By declaring `#[accessor(channel: u8, except(CC))]`, `channel(&self)` and `channel_mut(&mut self)` are derived, but they return `Some` for `NoteOn` and `NoteOff`, and `None` for `CC` and `Unsupported`.
 
 ```rust
-use sort_by_derive::EnumAccessor;
-
+# use sort_by_derive::EnumAccessor;
+#
 #[derive(EnumAccessor)]
 #[accessor(global_time: usize)]
 #[accessor(channel: u8, except(CC))]
@@ -272,30 +272,35 @@ assert!(
     [
         *Note::NoteOn {
             global_time: 42,
-            pitch: 5,
-            channel: 3,
+            // ...
+#            pitch: 5,
+#            channel: 3,
         }.global_time(),
         *Note::NoteOff {
             global_time: 42,
-            pitch: 2,
-            channel: 1,
+            // ...
+#            pitch: 2,
+#            channel: 1,
         }.global_time(),
         *Note::CC {
             global_time: 42,
         }.global_time(),
         *Note::Unsupported {
             global_time: 42,
-            raw_data: vec![1, 2, 4, 8],
-            channel: 4,
+            // ...
+#            raw_data: vec![1, 2, 4, 8],
+#            channel: 4,
         }.global_time()
     ].into_iter().all(|t| t == 42)
 );
 
 assert_eq!(
     Note::NoteOn {
-        global_time: 42,
+        // ...
+#        global_time: 42,
         pitch: 2,
-        channel: 0,
+        // ...
+#        channel: 0,
     }.pitch(),
     Some(&2)
 );
@@ -319,10 +324,10 @@ Named fields is supported, it will consider that the named field is of type `Fn(
 An intricate example:
 
 ```rust
-use sort_by_derive::EnumAccessor;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, Ordering};
-
+# use sort_by_derive::EnumAccessor;
+# use std::sync::Arc;
+# use std::sync::atomic::{AtomicU8, Ordering};
+#
 struct A {
     f1: u8,
     f2: u8
@@ -330,10 +335,12 @@ struct A {
 
 impl A {
     fn sum(&self) -> u8 {
-        self.f1 + self.f2
+        // ...
+#        self.f1 + self.f2
     }
     fn set(&mut self) -> &mut u8 {
-        &mut self.f1
+        // ...
+#        &mut self.f1
     }
 }
 
@@ -343,7 +350,8 @@ struct B {
 
 impl B {
     fn sum(&self) -> u8 {
-        self.values.iter().sum()
+        // ...
+#        self.values.iter().sum()
     }
 }
 
@@ -391,14 +399,15 @@ When using enums of enums, creating an accessor to the inner enum's sequence may
 
 ```rust
 use sort_by_derive::EnumSequence;
-use sort_by_derive::EnumAccessor;
 
 #[derive(EnumSequence)]
 enum ABC {
     A(u8),
     B(String),
-    C{f: String, g: usize}
+    C { f: String, g: usize }
 }
+
+assert_eq!(ABC::B("hi!".into()).enum_sequence(), 1);
 ```
 
 ## All together
@@ -406,35 +415,98 @@ enum ABC {
 Imagine the following :
 
 ```rust
-use sort_by_derive::SortBy;
-use sort_by_derive::EnumAccessor;
-use sort_by_derive::EnumSequence;
-
+# use sort_by_derive::SortBy;
+# use sort_by_derive::EnumAccessor;
+# use sort_by_derive::EnumSequence;
+# use std::cmp::Ordering;
+#
 #[derive(EnumSequence, EnumAccessor, SortBy, Debug)]
 #[accessor(global_time: usize)]
 #[accessor(channel: u8, except(CC))]
 #[accessor(pitch: u8, except(CC, Unsupported))]
 #[sort_by(global_time(), channel(), pitch(), enum_sequence())]
 enum Note {
-    NoteOn {
-        global_time: usize,
-        pitch: u8,
-        channel: u8
-    },
-    NoteOff {
-        global_time: usize,
-        pitch: u8,
-        channel: u8
-    },
-    CC {
-        global_time: usize
-    },
-    Unsupported {
-        global_time: usize,
-        raw_data: Vec<u8>,
-        channel: u8
-    }
+    // ...
+#    NoteOn {
+#        global_time: usize,
+#        pitch: u8,
+#        channel: u8
+#    },
+#    NoteOff {
+#        global_time: usize,
+#        pitch: u8,
+#        channel: u8
+#    },
+#    CC {
+#        global_time: usize
+#    },
+#    Unsupported {
+#        global_time: usize,
+#        raw_data: Vec<u8>,
+#        channel: u8
+#    }
 }
+
+assert_eq!(
+    Note::NoteOn {
+        global_time: 0,
+        pitch: 0,
+        channel: 0,
+    }.cmp(&Note::NoteOn {
+        global_time: 0,
+        pitch: 0,
+        channel: 0,
+    }),
+    Ordering::Equal
+);
+assert_eq!(
+    Note::NoteOn {
+        global_time: 0,
+        pitch: 2,
+        channel: 2,
+    }.cmp(&Note::NoteOff {
+        global_time: 2,
+        pitch: 0,
+        channel: 0,
+    }),
+    Ordering::Less
+);
+assert_eq!(
+    Note::NoteOn {
+        global_time: 0,
+        pitch: 2,
+        channel: 0,
+    }.cmp(&Note::NoteOff {
+        global_time: 0,
+        pitch: 0,
+        channel: 2,
+    }),
+    Ordering::Less
+);
+assert_eq!(
+    Note::NoteOn {
+        global_time: 0,
+        pitch: 0,
+        channel: 0,
+    }.cmp(&Note::NoteOff {
+        global_time: 0,
+        pitch: 0,
+        channel: 2,
+    }),
+    Ordering::Less
+);
+assert_eq!(
+    Note::NoteOn {
+        global_time: 0,
+        pitch: 0,
+        channel: 0,
+    }.cmp(&Note::NoteOff {
+        global_time: 0,
+        pitch: 0,
+        channel: 0,
+    }),
+    Ordering::Less
+);
 ```
 
 Now I have a `Note` enum that will sort by `global_time`, `channel`, `pitch`, and lastly by variant order ( `enum_sequence` ). Note that `None` is always less than `Some`.
