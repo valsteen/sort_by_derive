@@ -375,10 +375,9 @@ impl core::cmp::Ord for Toto {
         let output = rust_format::RustFmt::default()
             .format_str(output.to_string())
             .unwrap();
-        println!("{output}");
         assert_eq!(
             output,
-            r#"impl<'a, T> std::hash::Hash for ContextWrapper<T>
+            r#"impl<'a, T> std::hash::Hash for ContextWrapper<'a, T>
 where
     T: Ctx,
 {
@@ -386,8 +385,8 @@ where
         self.elapsed.hash(state);
     }
 }
-impl<'a, T> core::cmp::Eq for ContextWrapper<T> where T: Ctx {}
-impl<'a, T> core::cmp::PartialEq<Self> for ContextWrapper<T>
+impl<'a, T> core::cmp::Eq for ContextWrapper<'a, T> where T: Ctx {}
+impl<'a, T> core::cmp::PartialEq<Self> for ContextWrapper<'a, T>
 where
     T: Ctx,
 {
@@ -395,7 +394,7 @@ where
         self.cmp(other).is_eq()
     }
 }
-impl<'a, T> core::cmp::PartialOrd<Self> for ContextWrapper<T>
+impl<'a, T> core::cmp::PartialOrd<Self> for ContextWrapper<'a, T>
 where
     T: Ctx,
 {
@@ -403,12 +402,64 @@ where
         std::option::Option::Some(self.cmp(other))
     }
 }
-impl<'a, T> core::cmp::Ord for ContextWrapper<T>
+impl<'a, T> core::cmp::Ord for ContextWrapper<'a, T>
 where
     T: Ctx,
 {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         core::cmp::Ord::cmp(&self.elapsed, &other.elapsed)
+    }
+}
+"#
+        );
+    }
+
+    #[test]
+    fn test_tuple_struct() {
+        let input = syn::parse_quote! {
+            #[sort_by(somemethod(), literal, some.path)]
+            struct Something (
+              #[sort_by]
+              u16,
+              #[sort_by]
+              u32,
+              f32,
+            );
+        };
+
+        let output = crate::sort_by::impl_sort_by_derive(syn::parse2(input).unwrap());
+        let output = rust_format::RustFmt::default()
+            .format_str(output.to_string())
+            .unwrap();
+        assert_eq!(
+            output,
+            r#"impl std::hash::Hash for Something {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.somemethod().hash(state);
+        self.literal.hash(state);
+        self.some.path.hash(state);
+        self.0.hash(state);
+        self.1.hash(state);
+    }
+}
+impl core::cmp::Eq for Something {}
+impl core::cmp::PartialEq<Self> for Something {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other).is_eq()
+    }
+}
+impl core::cmp::PartialOrd<Self> for Something {
+    fn partial_cmp(&self, other: &Self) -> core::option::Option<core::cmp::Ordering> {
+        std::option::Option::Some(self.cmp(other))
+    }
+}
+impl core::cmp::Ord for Something {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        core::cmp::Ord::cmp(&self.somemethod(), &other.somemethod())
+            .then_with(|| self.literal.cmp(&other.literal))
+            .then_with(|| self.some.path.cmp(&other.some.path))
+            .then_with(|| self.0.cmp(&other.0))
+            .then_with(|| self.1.cmp(&other.1))
     }
 }
 "#
