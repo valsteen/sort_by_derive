@@ -6,10 +6,10 @@
 
 <!-- TOC -->
 * [Usage](#usage)
-  * [SortBy](#sortby)
-  * [EnumAccessor](#enumaccessor)
-    * [Field accessor](#field-accessor)
-  * [EnumSequence](#enumsequence)
+    * [SortBy](#sortby)
+    * [EnumAccessor](#enumaccessor)
+        * [Field accessor](#field-accessor)
+        * [EnumSequence](#enumsequence)
     * [Example](#example)
 <!-- TOC -->
 
@@ -53,16 +53,17 @@ This is typical for events - they represent a state change and are generally con
 
 #### Field accessor
 
-After adding `derive(EnumAccessor)` to the enum, fields are declared as `accessor(field: type)` attributes:
+After adding `derive(EnumAccessor)` to the enum, fields are declared as `accessor(field: type)` attributes.
+Aliases can be created to rename the accessor in order to avoid name clashes with the `as` keyword: `accessor(field as alias: type)`.
 
-This will derive the accessor methods `fn name(&self) -> &type;` and`fn name_mut(&mut self) -> &mut type;`, and return a reference to the field of the same name on any variant.
+This will derive the accessor methods `fn name(&self) -> &type;` and`fn name_mut(&mut self) -> &mut type;`, and return a reference to the field of the same name or alias on any variant.
 
 ```rust
 use sort_by_derive::EnumAccessor;
 
 #[derive(EnumAccessor)]
 #[accessor(a: u16)]
-#[accessor(b: u16)]
+#[accessor(b as my_b: u16)]
 enum E {
     Variant1{a: u16, b: u16},
     Variant2{a: u16, b: u16, c: u32},
@@ -73,14 +74,14 @@ let mut v2 = E::Variant2{a: 1, b: 1, c: 2};
 
 // Accessor methods are generated for the specified members
 assert_eq!(*v1.a(), 1);
-assert_eq!(*v2.b(), 1);
+assert_eq!(*v2.my_b(), 1);
 
 // Mutable accessors are also generated
 *v2.a_mut() = 2;
 assert_eq!(*v2.a(), 2);
 ```
 
-So you can take any `E`, all variants will have `a`, `a_mut`, `b`, `b_mut`
+So you can take any `E`, all variants will have `a`, `a_mut`, `my_b`, `my_b_mut`
 
 ### EnumSequence
 

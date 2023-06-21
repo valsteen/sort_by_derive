@@ -1,0 +1,11 @@
+error: Duplicate accessor b
+ --> tests/ui/fail_alias_conflicting_field_ident.rs:5:12
+  |
+5 | #[accessor(a as b: u32, except(Variant1,Variant2))]
+  |            ^^^^^^
+
+error: b is previously defined here
+ --> tests/ui/fail_alias_conflicting_field_ident.rs:4:12
+  |
+4 | #[accessor(b: u16, except(Variant3))]
+  |            ^^^^^^

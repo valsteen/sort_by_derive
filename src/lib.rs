@@ -300,12 +300,12 @@ pub fn sort_by_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 ///
 /// **Caveat**: Aliasing doesn't prevent *Duplicate accessor* error:
 ///
-/// ```compile_fail
+/// ```rust
 /// # use sort_by_derive::EnumAccessor;
 /// #
 /// #[derive(EnumAccessor)]
 /// #[accessor(a: u16, except(Variant3))]
-/// #[accessor(a as a_big: u32, except(Variant1,Variant2))] // error: Duplicate accessor a
+/// #[accessor(a as a_big: u32, except(Variant1,Variant2))]
 /// enum E {
 ///     Variant1 { a: u16 },
 ///     Variant2 { a: u16, c: u32 },
