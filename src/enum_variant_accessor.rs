@@ -459,15 +459,17 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
     {
         match parse_attr(attr) {
             Ok(accessor) => {
-                if accessors
-                    .iter()
-                    .any(|a| a.ident == accessor.ident && a.alias == accessor.alias)
-                {
-                    return syn::Error::new(
+                if let Some(conflicting) = accessors.iter().find(|a| a.alias == accessor.alias) {
+                    let mut error = syn::Error::new(
                         accessor.span,
-                        format!("Duplicate accessor {}", accessor.ident),
-                    )
-                    .into_compile_error();
+                        format!("Duplicate accessor {}", accessor.alias),
+                    );
+                    error.combine(syn::Error::new(
+                        // This isn't quite as pretty as compiler diagnostics, but close.
+                        conflicting.span,
+                        format!("{} is previously defined here", conflicting.alias),
+                    ));
+                    return error.into_compile_error();
                 }
                 accessors.push(accessor)
             }

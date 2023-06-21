@@ -17,3 +17,10 @@ fn test_alias() {
     assert_eq!(E::Variant3 { a: 2 }.a_big(), Some(&2));
     assert_eq!(E::Variant1 { a: 0 }.a_big(), None);
 }
+
+#[test]
+fn ui() {
+    let t = trybuild::TestCases::new();
+    t.pass("tests/ui/pass_*.rs");
+    t.compile_fail("tests/ui/fail_*.rs");
+}
