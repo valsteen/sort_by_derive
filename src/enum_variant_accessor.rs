@@ -459,10 +459,10 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
     {
         match parse_attr(attr) {
             Ok(accessor) => {
-                if accessors.iter().any(|a| a.ident == accessor.ident) {
+                if accessors.iter().any(|a| a.alias == accessor.alias) {
                     return syn::Error::new(
-                        accessor.span,
-                        format!("Duplicate accessor {}", accessor.ident),
+                        accessor.alias.span(),
+                        format!("Duplicate accessor {}", accessor.alias),
                     )
                     .into_compile_error();
                 }

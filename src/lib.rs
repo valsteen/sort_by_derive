@@ -298,26 +298,6 @@ pub fn sort_by_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 /// assert_eq!(E::Variant3 { b: 0 }.a_attr(), None);
 /// ```
 ///
-/// **Caveat**: Aliasing doesn't prevent *Duplicate accessor* error:
-///
-/// ```compile_fail
-/// # use sort_by_derive::EnumAccessor;
-/// #
-/// #[derive(EnumAccessor)]
-/// #[accessor(a: u16, except(Variant3))]
-/// #[accessor(a as a_big: u32, except(Variant1,Variant2))] // error: Duplicate accessor a
-/// enum E {
-///     Variant1 { a: u16 },
-///     Variant2 { a: u16, c: u32 },
-///     Variant3 { a: u32 },
-/// }
-///
-/// assert_eq!(E::Variant1 { a: 1 }.a(), Some(&1));
-/// assert_eq!(E::Variant2 { a: 1, c: 0 }.a(), Some(&1));
-/// assert_eq!(E::Variant3 { a: 0 }.a(), None);
-/// assert_eq!(E::Variant3 { a: 2 }.a_big(), Some(&2));
-/// assert_eq!(E::Variant1 { a: 0 }.a_big(), None);
-/// ```
 ///
 /// **Note**: this will create an extension trait `{TypeName}Accessor` ( i.e. the type `T` will get a new trait `TAccessor` ).
 /// This trait will have the same visibility as the type.
