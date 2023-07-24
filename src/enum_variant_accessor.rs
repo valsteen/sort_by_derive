@@ -478,8 +478,6 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
         };
     }
 
-    let extension_trait = Ident::new(format!("{ident}Accessor").as_str(), input_span);
-
     let mut accessor_impls = Vec::new();
     let mut accessor_defs = Vec::new();
 
@@ -489,7 +487,7 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
                 .into_compile_error();
         }
 
-        let span = accessor.span;
+        let span = accessor.alias.span();
         let method_name = &accessor.alias;
 
         let variations = match accessor.accessor_type {
@@ -532,7 +530,6 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
         }
     }
 
-    let vis = &input.vis;
     let generics = &input.generics;
     let where_clause = &input.generics.where_clause;
     let generics_params = &input
@@ -547,11 +544,7 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
         .collect::<Vec<_>>();
 
     syn::parse_quote_spanned! {input_span =>
-        #vis trait #extension_trait #generics #where_clause {
-            #(#accessor_defs)*
-        }
-
-        impl #generics #extension_trait <#(#generics_params),*> for #ident <#(#generics_params),*> #where_clause {
+        impl #generics #ident <#(#generics_params),*> #where_clause {
             #(#accessor_impls)*
         }
     }
@@ -583,17 +576,7 @@ mod test {
             .unwrap();
         assert_eq!(
             output,
-            r#"trait SomeEnumAccessor {
-    fn acc1(&self) -> std::option::Option<&usize>;
-    fn acc1_mut(&mut self) -> std::option::Option<&mut usize>;
-    fn get_u8(&self) -> &u8;
-    fn get_u8_mut(&mut self) -> &mut u8;
-    fn acc3(&self) -> std::option::Option<&String>;
-    fn acc3_mut(&mut self) -> std::option::Option<&mut String>;
-    fn acc4(&self) -> std::option::Option<String>;
-    fn other(&self) -> std::option::Option<String>;
-}
-impl SomeEnumAccessor for SomeEnum {
+            r#"impl SomeEnum {
     fn acc1(&self) -> std::option::Option<&usize> {
         match self {
             Self::A(..) => std::option::Option::None,
@@ -687,11 +670,7 @@ impl SomeEnumAccessor for SomeEnum {
             .unwrap();
         assert_eq!(
             output,
-            r#"trait SomeEnumAccessor {
-    fn acc1(&self) -> std::option::Option<&usize>;
-    fn acc1_mut(&mut self) -> std::option::Option<&mut usize>;
-}
-impl SomeEnumAccessor for SomeEnum {
+            r#"impl SomeEnum {
     fn acc1(&self) -> std::option::Option<&usize> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(&x.acc1),
@@ -727,10 +706,7 @@ impl SomeEnumAccessor for SomeEnum {
             .unwrap();
         assert_eq!(
             output,
-            r"trait SomeEnumAccessor {
-    fn inner_mut(&mut self) -> std::option::Option<&mut usize>;
-}
-impl SomeEnumAccessor for SomeEnum {
+            r"impl SomeEnum {
     fn inner_mut(&mut self) -> std::option::Option<&mut usize> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(x.inner_mut()),

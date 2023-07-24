@@ -299,10 +299,6 @@ pub fn sort_by_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream
 /// ```
 ///
 ///
-/// **Note**: this will create an extension trait `{TypeName}Accessor` ( i.e. the type `T` will get a new trait `TAccessor` ).
-/// This trait will have the same visibility as the type.
-/// When using this type from another module, make sure to bring the trait in scope with `use {TypeName}Accessor`.
-///
 /// #### Example
 ///
 /// Say we have a series of midi events, they are very similar but with slight variations - they always have some timing information but they may not always have a pitch or channel.
