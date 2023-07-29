@@ -411,7 +411,7 @@ fn make_impl(
     let (self_modifier, method_name) = get_method_modifiers(signature_type, method_name, span);
 
     quote_spanned! {span =>
-        fn #method_name(& #self_modifier self) -> #ret {
+        pub fn #method_name(& #self_modifier self) -> #ret {
             match self {
                 #(#arms),*
             }
@@ -577,7 +577,7 @@ mod test {
         assert_eq!(
             output,
             r#"impl SomeEnum {
-    fn acc1(&self) -> std::option::Option<&usize> {
+    pub fn acc1(&self) -> std::option::Option<&usize> {
         match self {
             Self::A(..) => std::option::Option::None,
             Self::C(..) => std::option::Option::None,
@@ -586,7 +586,7 @@ mod test {
             Self::H { acc1, .. } => std::option::Option::Some(acc1),
         }
     }
-    fn acc1_mut(&mut self) -> std::option::Option<&mut usize> {
+    pub fn acc1_mut(&mut self) -> std::option::Option<&mut usize> {
         match self {
             Self::A(..) => std::option::Option::None,
             Self::C(..) => std::option::Option::None,
@@ -595,7 +595,7 @@ mod test {
             Self::H { acc1, .. } => std::option::Option::Some(acc1),
         }
     }
-    fn get_u8(&self) -> &u8 {
+    pub fn get_u8(&self) -> &u8 {
         match self {
             Self::A(x, ..) => &x.acc2,
             Self::C(x, ..) => &x.acc2,
@@ -604,7 +604,7 @@ mod test {
             Self::H { acc2, .. } => acc2,
         }
     }
-    fn get_u8_mut(&mut self) -> &mut u8 {
+    pub fn get_u8_mut(&mut self) -> &mut u8 {
         match self {
             Self::A(x, ..) => &mut x.acc2,
             Self::C(x, ..) => &mut x.acc2,
@@ -613,7 +613,7 @@ mod test {
             Self::H { acc2, .. } => acc2,
         }
     }
-    fn acc3(&self) -> std::option::Option<&String> {
+    pub fn acc3(&self) -> std::option::Option<&String> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(&x.acc3),
             Self::C(x, ..) => std::option::Option::Some(&x.acc3),
@@ -622,7 +622,7 @@ mod test {
             Self::H { acc3, .. } => std::option::Option::Some(acc3),
         }
     }
-    fn acc3_mut(&mut self) -> std::option::Option<&mut String> {
+    pub fn acc3_mut(&mut self) -> std::option::Option<&mut String> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(&mut x.acc3),
             Self::C(x, ..) => std::option::Option::Some(&mut x.acc3),
@@ -631,7 +631,7 @@ mod test {
             Self::H { acc3, .. } => std::option::Option::Some(acc3),
         }
     }
-    fn acc4(&self) -> std::option::Option<String> {
+    pub fn acc4(&self) -> std::option::Option<String> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(x.acc4()),
             Self::C(x, ..) => std::option::Option::Some(x.acc4()),
@@ -640,7 +640,7 @@ mod test {
             Self::H { acc4, .. } => std::option::Option::Some(acc4()),
         }
     }
-    fn other(&self) -> std::option::Option<String> {
+    pub fn other(&self) -> std::option::Option<String> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(x.acc5()),
             Self::C(x, ..) => std::option::Option::Some(x.acc5()),
@@ -671,14 +671,14 @@ mod test {
         assert_eq!(
             output,
             r#"impl SomeEnum {
-    fn acc1(&self) -> std::option::Option<&usize> {
+    pub fn acc1(&self) -> std::option::Option<&usize> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(&x.acc1),
             Self::B => std::option::Option::None,
             Self::C(x, ..) => std::option::Option::Some(&x.acc1),
         }
     }
-    fn acc1_mut(&mut self) -> std::option::Option<&mut usize> {
+    pub fn acc1_mut(&mut self) -> std::option::Option<&mut usize> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(&mut x.acc1),
             Self::B => std::option::Option::None,
@@ -707,7 +707,7 @@ mod test {
         assert_eq!(
             output,
             r"impl SomeEnum {
-    fn inner_mut(&mut self) -> std::option::Option<&mut usize> {
+    pub fn inner_mut(&mut self) -> std::option::Option<&mut usize> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(x.inner_mut()),
             Self::C(x, ..) => std::option::Option::Some(x.inner_mut()),
