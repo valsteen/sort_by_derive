@@ -366,6 +366,7 @@ fn make_impl(
     let (self_modifier, method_name) = get_method_modifiers(signature_type, method_name, span);
 
     quote_spanned! {span =>
+        #[allow(dead_code)]
         pub fn #method_name(& #self_modifier self) -> #ret {
             match self {
                 #(#arms),*
