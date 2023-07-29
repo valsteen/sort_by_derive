@@ -1,3 +1,10 @@
+#![deny(clippy::all)]
+#![warn(clippy::pedantic)]
+#![warn(clippy::nursery)]
+#![warn(clippy::cargo)]
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::similar_names)]
+#![allow(clippy::module_name_repetitions)]
 #![doc = include_str!("../README.md")]
 //! ## All together
 //!
@@ -483,6 +490,7 @@ pub fn enum_variant_accessor_derive(input: proc_macro::TokenStream) -> proc_macr
 ///
 /// assert_eq!(ABC::B("hi!".into()).enum_sequence(), 1);
 /// ```
+///
 #[proc_macro_derive(EnumSequence)]
 pub fn enum_sequence_derive(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let ast = parse_macro_input!(input as DeriveInput);

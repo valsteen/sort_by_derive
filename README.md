@@ -5,12 +5,13 @@
 # sort_by_derive
 
 <!-- TOC -->
-* [Usage](#usage)
-  * [SortBy](#sortby)
-  * [EnumAccessor](#enumaccessor)
-    * [Field accessor](#field-accessor)
-  * [EnumSequence](#enumsequence)
-    * [Example](#example)
+* [sort_by_derive](#sortbyderive)
+  * [Usage](#usage)
+    * [SortBy](#sortby)
+    * [EnumAccessor](#enumaccessor)
+      * [Field accessor](#field-accessor)
+    * [EnumSequence](#enumsequence)
+      * [Example](#example)
 <!-- TOC -->
 
 This crate provides 3 derive macros `SortBy`, `EnumAccessor` and `EnumSequence`.
