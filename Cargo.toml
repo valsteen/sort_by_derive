@@ -17,7 +17,7 @@ doctest = false
 
 [dependencies]
 proc-macro2 = "1.0.43"
-syn = { version = "1.0.99", features = ["full"] }
+syn = { version = "2.0.28", features = ["full"] }
 quote = "1.0.21"
 either = "1.8.0"
 
