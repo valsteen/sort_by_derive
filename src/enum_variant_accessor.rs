@@ -616,7 +616,7 @@ impl SomeEnum {
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r"#[allow(dead_code)]
+            r#"#[allow(dead_code)]
 impl SomeEnum {
     pub fn inner_mut(&mut self) -> std::option::Option<&mut usize> {
         match self {
@@ -626,7 +626,7 @@ impl SomeEnum {
         }
     }
 }
-"
+"#
         );
     }
 }

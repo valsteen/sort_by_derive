@@ -131,15 +131,16 @@ mod sort_by;
 /// assert_eq!(Something{a: 2, b: 0}.cmp(&Something{a: 1, b: 1}), Ordering::Greater); // a is compared
 /// assert_eq!(Something{a: 1, b: 0}.cmp(&Something{a: 1, b: 1}), Ordering::Equal); // b is ignored
 /// ```
-/// You can use it the same way with tuple structs:
+/// You can use it the same way with tuple structs. Tuple members can be referenced by their index in the struct-level
+/// `#[sort_by(...)]` attribute.
 ///
 /// ```rust
 /// # use std::cmp::Ordering;
 /// # use sort_by_derive::SortBy;
 /// #
 /// #[derive(SortBy)]
+/// #[sort_by(0)]
 /// struct Something(
-///     #[sort_by]
 ///     u16,
 ///     #[sort_by]
 ///     u32,
