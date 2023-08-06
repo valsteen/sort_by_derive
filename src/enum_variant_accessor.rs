@@ -71,7 +71,7 @@ fn parse_attr(attr: &Attribute) -> Result<Accessor, Error> {
     let (target_attribute, is_call, next) = match tokens.next() {
         Some(TokenTree::Group(paren)) if paren.delimiter() == Delimiter::Parenthesis => {
             if !paren.stream().is_empty() {
-                return Err(Error::new(attr.span(), "Target method cannot take arguments"));
+                return Err(Error::new(paren.span(), "Target method cannot take arguments"));
             }
             (target_attribute, true, tokens.next())
         }
