@@ -226,6 +226,7 @@ fn parse_outer(attr: Attribute) -> Result<Vec<TokenStream>, Error> {
 
 #[cfg(test)]
 mod test {
+    use pretty_assertions::assert_eq;
     use rust_format::Formatter;
 
     #[test]

@@ -466,6 +466,7 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
 
 #[cfg(test)]
 mod test {
+    use pretty_assertions::assert_eq;
     use rust_format::Formatter;
 
     #[test]
