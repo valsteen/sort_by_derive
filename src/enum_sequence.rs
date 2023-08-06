@@ -10,12 +10,9 @@ pub fn impl_enum_sequence(input: DeriveInput) -> TokenStream {
     let input_span = input.span();
     let trait_ident = Ident::new(format!("{ident}EnumSequence").as_str(), input_span);
 
-    let enu = match input.data {
-        Data::Enum(enu) => enu,
-        _ => {
+    let Data::Enum(enu) = input.data else {
             return syn::Error::new(input_span, ENUM_HELP).into_compile_error();
-        }
-    };
+        };
 
     let mut match_branches = Vec::new();
 
@@ -31,7 +28,7 @@ pub fn impl_enum_sequence(input: DeriveInput) -> TokenStream {
 
         match_branches.push(quote::quote_spanned! { span =>
             #pattern => #i
-        })
+        });
     }
 
     let vis = &input.vis;
@@ -41,10 +38,10 @@ pub fn impl_enum_sequence(input: DeriveInput) -> TokenStream {
         .generics
         .params
         .iter()
-        .flat_map(|p| match p {
+        .filter_map(|p| match p {
             GenericParam::Type(t) => Some(&t.ident),
             GenericParam::Const(t) => Some(&t.ident),
-            _ => None,
+            GenericParam::Lifetime(_) => None,
         })
         .collect::<Vec<_>>();
 
@@ -78,9 +75,7 @@ mod test {
         };
 
         let output = crate::enum_sequence::impl_enum_sequence(syn::parse2(input).unwrap());
-        let output = rust_format::RustFmt::default()
-            .format_str(output.to_string())
-            .unwrap();
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
 
         assert_eq!(
             output,
@@ -97,6 +92,6 @@ impl EEnumSequence for E {
     }
 }
 "#,
-        )
+        );
     }
 }

@@ -1,16 +1,14 @@
 use either::Either;
-use proc_macro2::{Ident, Span, TokenStream};
-use quote::{quote_spanned, ToTokens};
+use proc_macro2::{Delimiter, Ident, Span, TokenStream, TokenTree};
+use quote::{quote_spanned, ToTokens, TokenStreamExt};
 use syn::token::Mut;
 use syn::{
-    self, punctuated::Pair, spanned::Spanned, Attribute, Data, DeriveInput, Expr, ExprCall,
-    ExprParen, ExprTuple, ExprType, Fields, FieldsNamed, GenericParam, Token, Type, TypeReference,
-    Variant,
+    self, spanned::Spanned, Attribute, Data, DeriveInput, Error, Expr, ExprParen, ExprPath, Fields, FieldsNamed,
+    GenericParam, Meta, MetaList, Token, Type, TypeReference, Variant,
 };
 
 const ATTR_HELP: &str = "EnumAccessor: Invalid accessor declaration, expected #[accessor(field1: type, except(VariantWithoutAccessor1,VariantWithoutAccessor2))]";
-const ENUM_HELP: &str =
-    "EnumAccessor: only variants with one unnamed parameter, unit and named variants are supported";
+const ENUM_HELP: &str = "EnumAccessor: only variants with one unnamed parameter, unit and named variants are supported";
 
 #[derive(Clone, Copy)]
 enum AccessorType {
@@ -37,15 +35,12 @@ impl AppliesTo {
 
     fn validate(&self, actual_variants: &[Variant]) -> Result<(), Ident> {
         let vec = match self {
-            AppliesTo::Only(vec) | AppliesTo::Except(vec) => vec,
-            AppliesTo::All => return Ok(()),
+            Self::Only(vec) | Self::Except(vec) => vec,
+            Self::All => return Ok(()),
         };
 
         for ident in vec {
-            if !actual_variants
-                .iter()
-                .any(|variant| &variant.ident == ident)
-            {
+            if !actual_variants.iter().any(|variant| &variant.ident == ident) {
                 return Err(ident.clone());
             }
         }
@@ -62,159 +57,149 @@ struct Accessor {
     accessor_type: AccessorType,
 }
 
-fn parse_tuple(expr: &ExprTuple) -> Option<Accessor> {
-    let mut pairs = expr.elems.pairs();
-    let name_type = pairs.next()?;
-    let exceptions = pairs.next()?;
-
-    let mut accessor = match name_type {
-        Pair::Punctuated(Expr::Type(exp), _) => parse_ty(exp)?,
-        _ => return None,
+fn parse_attr(attr: &Attribute) -> Result<Accessor, Error> {
+    let Meta::List(MetaList{  tokens,.. }) = attr.meta.clone() else {
+        return Err(Error::new(attr.span(), ATTR_HELP));
     };
 
-    match exceptions {
-        // Slight variations makes the parser choose one of those compositions
-        Pair::End(Expr::Tuple(expr)) => {
-            accessor.applies_to = AppliesTo::Except(
-                expr.elems
-                    .iter()
-                    .map(|elem| match elem {
-                        Expr::Path(path) => Some(path.path.get_ident()?.clone()),
-                        _ => None,
-                    })
-                    .collect::<Option<_>>()?,
-            );
+    let mut tokens = tokens.into_iter();
+
+    let Some(TokenTree::Ident(target_attribute)) = tokens.next() else {
+        return Err(Error::new(attr.span(), ATTR_HELP));
+    };
+
+    let (target_attribute, is_call, next) = match tokens.next() {
+        Some(TokenTree::Group(paren)) if paren.delimiter() == Delimiter::Parenthesis => {
+            if !paren.stream().is_empty() {
+                return Err(Error::new(attr.span(), "Target method cannot take arguments"));
+            }
+            (target_attribute, true, tokens.next())
         }
-        Pair::End(Expr::Type(expr)) => match expr.ty.as_ref() {
-            Type::Tuple(expr) => {
-                accessor.applies_to = AppliesTo::Except(
-                    expr.elems
-                        .iter()
-                        .map(|elem| match elem {
-                            Type::Path(path) => Some(path.path.get_ident()?.clone()),
-                            _ => None,
-                        })
-                        .collect::<Option<_>>()?,
-                );
+        next => (target_attribute, false, next),
+    };
+
+    let (alias, next) = match next {
+        Some(TokenTree::Ident(ident)) if ident == "as" => {
+            let Some(TokenTree::Ident(alias)) = tokens.next() else {
+                return Err(Error::new(ident.span(), "Expected alias identifier"));
+            };
+            (alias, tokens.next())
+        }
+        next => (target_attribute.clone(), next),
+    };
+
+    let mut typ = match (next, tokens.next()) {
+        (Some(TokenTree::Punct(p)), Some(typ)) if p.as_char() == ':' => typ.into_token_stream(),
+        (next, _) => {
+            return Err(Error::new(
+                next.map_or_else(|| attr.span(), |token| token.span()),
+                ATTR_HELP,
+            ))
+        }
+    };
+
+    let (typ, next) = match tokens.next() {
+        Some(TokenTree::Punct(punct)) if punct.as_char() == ',' => {
+            (syn::parse2::<Type>(typ)?, Some(TokenTree::Punct(punct)))
+        }
+        Some(mut token) => loop {
+            typ.append(token);
+
+            if let Ok(typ) = syn::parse2::<Type>(typ.clone()) {
+                break (typ, tokens.next());
             }
-            _ => return None,
+
+            token = tokens.next().ok_or_else(|| Error::new(typ.span(), "invalid type"))?;
         },
-        Pair::End(Expr::Paren(expr)) => match expr.expr.as_ref() {
-            Expr::Path(path) => {
-                accessor.applies_to = AppliesTo::Except(vec![path.path.get_ident()?.clone()])
+        None => (syn::parse2::<Type>(typ)?, None),
+    };
+
+    let accessor_type = match (&typ, is_call) {
+        (
+            Type::Reference(TypeReference {
+                mutability: Some(_), ..
+            }),
+            true,
+        ) => AccessorType::CallMut,
+        (_, true) => AccessorType::Call,
+        (_, false) => AccessorType::Field,
+    };
+
+    match next {
+        Some(TokenTree::Punct(p)) if p.as_char() == ',' => (),
+        Some(token) => return Err(Error::new(token.span(), "unexpected token")),
+        None => {
+            return Ok(Accessor {
+                ident: target_attribute,
+                alias,
+                ty: typ,
+                applies_to: AppliesTo::All,
+                span: attr.span(),
+                accessor_type,
+            });
+        }
+    };
+
+    let tokens = tokens.collect::<TokenStream>();
+    let applies_to = match syn::parse2::<Expr>(tokens.clone())? {
+        Expr::Tuple(expr) => AppliesTo::Except(
+            expr.elems
+                .into_iter()
+                .map(|elem| match elem {
+                    Expr::Path(ExprPath { path, .. }) if path.segments.len() == 1 => {
+                        Ok(path.get_ident().ok_or_else(|| path.span())?.clone())
+                    }
+                    _ => Err(elem.span()),
+                })
+                .collect::<Result<_, _>>()
+                .map_err(|span| Error::new(span, "invalid attribute name"))?,
+        ),
+        Expr::Paren(ExprParen { expr, .. }) => if let Expr::Path(path) = *expr {
+            path.path
+                .get_ident()
+                .map(|ident| AppliesTo::Except(vec![ident.clone()]))
+                .ok_or_else(|| path.span())
+        } else {
+            Err(expr.span())
+        }
+        .map_err(|span| Error::new(span, "comma-separated list of fields expected"))?,
+        Expr::Call(call) => {
+            let ident = if let Expr::Path(p) = call.func.as_ref() {
+                p.path.get_ident().cloned()
+            } else {
+                None
             }
-            _ => return None,
-        },
-        Pair::End(Expr::Call(call)) => {
-            let ident = ident_from_call(call)?;
+            .ok_or_else(|| Error::new(call.span(), "'except' or 'only' expected"))?;
+
             let vec = call
                 .args
                 .iter()
                 .map(|arg| match arg {
-                    Expr::Path(path) => path.path.get_ident().cloned(),
-                    _ => None,
+                    Expr::Path(path) => Ok(path.path.get_ident().ok_or_else(|| arg.span())?.clone()),
+                    _ => Err(arg.span()),
                 })
-                .collect::<Option<Vec<Ident>>>()?;
+                .collect::<Result<_, _>>()
+                .map_err(|span| Error::new(span, "invalid attribute name"))?;
+
             if ident.to_string().eq_ignore_ascii_case("except") {
-                accessor.applies_to = AppliesTo::Except(vec);
+                AppliesTo::Except(vec)
             } else if ident.to_string().eq_ignore_ascii_case("only") {
-                accessor.applies_to = AppliesTo::Only(vec);
+                AppliesTo::Only(vec)
             } else {
-                return None;
+                return Err(Error::new(tokens.span(), "'except' or 'only' expected"));
             }
         }
-        _ => return None,
+        _ => return Err(Error::new(tokens.span(), ATTR_HELP)),
     };
 
-    Some(accessor)
-}
-
-fn ident_from_call(call: &ExprCall) -> Option<Ident> {
-    match call.func.as_ref() {
-        Expr::Path(p) => Some(p.path.get_ident()?.clone()),
-        _ => None,
-    }
-}
-
-fn parse_ty(expr: &ExprType) -> Option<Accessor> {
-    let (ident, alias, accessor_type, span) = match expr.expr.as_ref() {
-        Expr::Path(p) => {
-            let ident = p.path.get_ident()?.clone();
-            (ident.clone(), ident, AccessorType::Field, expr.span())
-        }
-        Expr::Call(call) => {
-            let ident = ident_from_call(call)?;
-            if !call.args.is_empty() {
-                return None;
-            }
-            let accessor_type = match expr.ty.as_ref() {
-                Type::Reference(TypeReference {
-                    mutability: Some(_),
-                    ..
-                }) => AccessorType::CallMut,
-                _ => AccessorType::Call,
-            };
-
-            (ident.clone(), ident, accessor_type, call.span())
-        }
-        Expr::Cast(expr) => {
-            let alias = if let Type::Path(path) = expr.ty.as_ref() {
-                path.path.get_ident()?.clone()
-            } else {
-                return None;
-            };
-            match expr.expr.as_ref() {
-                Expr::Path(path) => {
-                    let ident = path.path.get_ident()?.clone();
-                    (ident, alias, AccessorType::Field, expr.span())
-                }
-                Expr::Call(call) => {
-                    let ident = ident_from_call(call)?;
-                    if !call.args.is_empty() {
-                        return None;
-                    }
-                    (ident, alias, AccessorType::Call, call.span())
-                }
-                _ => return None,
-            }
-        }
-        _ => return None,
-    };
-
-    Some(Accessor {
-        ident,
+    Ok(Accessor {
+        ident: target_attribute,
         alias,
-        ty: expr.ty.as_ref().clone(),
-        applies_to: AppliesTo::All,
-        span,
+        ty: typ,
+        applies_to,
+        span: attr.span(),
         accessor_type,
     })
-}
-
-fn parse_paren(expr: &ExprParen) -> Option<Accessor> {
-    match expr.expr.as_ref() {
-        Expr::Type(ty) => parse_ty(ty),
-        _ => None,
-    }
-}
-
-fn parse_attr(attr: &Attribute) -> Result<Accessor, syn::Error> {
-    match syn::parse2::<Expr>(attr.tokens.to_token_stream()) {
-        Ok(Expr::Paren(expr)) => {
-            // #[accessor(field1: type))]
-            parse_paren(&expr).ok_or_else(|| syn::Error::new(expr.span(), ATTR_HELP))
-        }
-        Ok(Expr::Tuple(expr)) => {
-            // #[accessor(field1: type, except(variant1,variant2))]
-            parse_tuple(&expr).ok_or_else(|| syn::Error::new(expr.span(), ATTR_HELP))
-        }
-        Ok(expr) => Err(syn::Error::new(expr.span(), ATTR_HELP)),
-        Err(e) => {
-            let mut err = syn::Error::new(attr.span(), ATTR_HELP);
-            err.combine(e);
-            Err(err)
-        }
-    }
 }
 
 fn make_mut(ident: &Ident, span: Span) -> Ident {
@@ -225,7 +210,7 @@ fn get_ret(span: Span, is_optional: bool, access_type: TypeModifier, typ: &Type)
     let modifier = match access_type {
         TypeModifier::Ref => Some(quote_spanned!(span => &)),
         TypeModifier::RefMut => Some(quote_spanned!(span => &mut )),
-        _ => None,
+        TypeModifier::Unmodified => None,
     };
 
     if is_optional {
@@ -242,11 +227,7 @@ enum TypeModifier {
     Unmodified,
 }
 
-fn make_match_arms(
-    variant: &Variant,
-    accessor: &Accessor,
-    access_type: TypeModifier,
-) -> Result<TokenStream, syn::Error> {
+fn make_match_arms(variant: &Variant, accessor: &Accessor, access_type: TypeModifier) -> Result<TokenStream, Error> {
     let span = variant.span();
     let variant_ident = &variant.ident;
     let accessor_name = &accessor.ident;
@@ -270,24 +251,27 @@ fn make_match_arms(
         &variant.fields,
     ) {
         (_, true, Fields::Unit) => {
-            let mut err = syn::Error::new(
+            let mut err = Error::new(
                 accessor.span,
                 format!("Unit variant {variant_ident} must be included as exception"),
             );
-            err.combine(syn::Error::new(variant.span(), format!("Variant {variant_ident} is a unit type, and must be added to exceptions for `{accessor_name}`")));
+            err.combine(Error::new(
+                variant.span(),
+                format!(
+                    "Variant {variant_ident} is a unit type, and must be added to exceptions for `{accessor_name}`"
+                ),
+            ));
             Err(err)
         }
         (true, _, Fields::Unnamed(..)) => {
             let mut span = span;
             if let Some(f) = variant.fields.iter().next() {
-                span = f.span()
+                span = f.span();
             }
             let mut accessor_name = accessor_name.clone();
             accessor_name.set_span(span);
 
-            Ok(
-                quote_spanned!(span => Self::#variant_ident(x, ..) => #modifier x.#accessor_name #call),
-            )
+            Ok(quote_spanned!(span => Self::#variant_ident(x, ..) => #modifier x.#accessor_name #call))
         }
         (false, true, Fields::Unnamed(..)) => {
             let span = variant.fields.iter().next().unwrap().span();
@@ -302,9 +286,7 @@ fn make_match_arms(
             let span = get_named_variant_field_span(variant, accessor, fields)?;
             let mut accessor_name = accessor_name.clone();
             accessor_name.set_span(span);
-            Ok(
-                quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => #accessor_name #call),
-            )
+            Ok(quote_spanned!(span => Self::#variant_ident{#accessor_name, ..} => #accessor_name #call))
         }
         (false, true, Fields::Named(fields)) => {
             let span = get_named_variant_field_span(variant, accessor, fields)?;
@@ -315,46 +297,36 @@ fn make_match_arms(
                 quote_spanned!(span => Self::#variant_ident{#accessor_name, ..}=> std::option::Option::Some(#accessor_name #call)),
             )
         }
-        (_, false, Fields::Unit) => {
-            Ok(quote_spanned!(span => Self::#variant_ident => std::option::Option::None))
-        }
+        (_, false, Fields::Unit) => Ok(quote_spanned!(span => Self::#variant_ident => std::option::Option::None)),
         (_, false, Fields::Named(..)) => {
             let mut span = span;
             if let Some(f) = variant.fields.iter().next() {
-                span = f.span()
+                span = f.span();
             }
             Ok(quote_spanned!(span => Self::#variant_ident{..} => std::option::Option::None))
         }
         (_, false, Fields::Unnamed(..)) => {
             let mut span = span;
             if let Some(f) = variant.fields.iter().next() {
-                span = f.span()
+                span = f.span();
             }
             Ok(quote_spanned!(span => Self::#variant_ident(..) => std::option::Option::None))
         }
     }
 }
 
-fn get_named_variant_field_span(
-    variant: &Variant,
-    accessor: &Accessor,
-    fields: &FieldsNamed,
-) -> Result<Span, syn::Error> {
+fn get_named_variant_field_span(variant: &Variant, accessor: &Accessor, fields: &FieldsNamed) -> Result<Span, Error> {
     let accessor_name = &accessor.ident;
 
-    let span = if let Some(f) = fields
-        .named
-        .iter()
-        .find(|f| f.ident.as_ref() == Some(accessor_name))
-    {
+    let span = if let Some(f) = fields.named.iter().find(|f| f.ident.as_ref() == Some(accessor_name)) {
         f.span()
     } else {
         let variant_ident = &variant.ident;
-        let mut err = syn::Error::new(
+        let mut err = Error::new(
             accessor.span,
             format!("No such field '{accessor_name}' on variant {variant_ident}"),
         );
-        err.combine(syn::Error::new(
+        err.combine(Error::new(
             variant.span(),
             format!("{accessor_name} is missing from {variant_ident}"),
         ));
@@ -370,17 +342,13 @@ enum SignatureType {
     CallMut,
 }
 
-fn get_method_modifiers(
-    signature_type: SignatureType,
-    method_name: &Ident,
-    span: Span,
-) -> (Option<Mut>, Ident) {
+fn get_method_modifiers(signature_type: SignatureType, method_name: &Ident, span: Span) -> (Option<Mut>, Ident) {
     let self_modifier = match signature_type {
         SignatureType::ReadOnly => None,
         SignatureType::FieldMut | SignatureType::CallMut => Some(Token![mut](span)),
     };
 
-    let method_name = if let SignatureType::FieldMut = signature_type {
+    let method_name = if signature_type == SignatureType::FieldMut {
         make_mut(method_name, span)
     } else {
         method_name.clone()
@@ -388,25 +356,12 @@ fn get_method_modifiers(
     (self_modifier, method_name)
 }
 
-fn make_def(
-    span: Span,
-    signature_type: SignatureType,
-    method_name: &Ident,
-    ret: &TokenStream,
-) -> TokenStream {
-    let (self_modifier, method_name) = get_method_modifiers(signature_type, method_name, span);
-
-    quote_spanned! {span =>
-        fn #method_name(& #self_modifier self) -> #ret;
-    }
-}
-
 fn make_impl(
     span: Span,
     signature_type: SignatureType,
     method_name: &Ident,
     ret: &TokenStream,
-    arms: Vec<TokenStream>,
+    arms: &[TokenStream],
 ) -> TokenStream {
     let (self_modifier, method_name) = get_method_modifiers(signature_type, method_name, span);
 
@@ -423,50 +378,26 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
     let input_span = input.span();
     let ident = input.ident;
 
-    let enu = match input.data {
-        Data::Enum(enu) => enu,
-        _ => {
-            return syn::Error::new(input_span, ENUM_HELP).into_compile_error();
-        }
-    };
+    let Data::Enum(enu) = input.data else {
+            return Error::new(input_span, ENUM_HELP).into_compile_error();
+        };
 
-    let mut variants = vec![];
-    let mut named_variants = vec![];
-    let mut unit_variants = vec![];
-
-    for variant in enu.variants {
-        match variant.fields {
-            Fields::Unnamed(_) => {
-                variants.push(variant);
-            }
-            Fields::Named(_) => {
-                variants.push(variant.clone());
-                named_variants.push(variant.ident);
-            }
-            Fields::Unit => {
-                variants.push(variant.clone());
-                unit_variants.push(variant.ident.clone());
-            }
-        }
-    }
+    let variants = enu.variants.into_iter().collect::<Vec<_>>();
 
     let mut accessors: Vec<Accessor> = vec![];
 
     for attr in input
         .attrs
-        .iter()
-        .filter(|i| i.path.get_ident().map(|i| i == "accessor") == Some(true))
+        .into_iter()
+        .filter(|i| i.path().get_ident().map(|i| i == "accessor") == Some(true))
     {
-        match parse_attr(attr) {
+        match parse_attr(&attr) {
             Ok(accessor) => {
                 if accessors.iter().any(|a| a.alias == accessor.alias) {
-                    return syn::Error::new(
-                        accessor.alias.span(),
-                        format!("Duplicate accessor {}", accessor.alias),
-                    )
-                    .into_compile_error();
+                    return Error::new(accessor.alias.span(), format!("Duplicate accessor {}", accessor.alias))
+                        .into_compile_error();
                 }
-                accessors.push(accessor)
+                accessors.push(accessor);
             }
             Err(e) => return e.into_compile_error(),
         };
@@ -479,24 +410,18 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
     }
 
     let mut accessor_impls = Vec::new();
-    let mut accessor_defs = Vec::new();
 
-    for accessor in accessors.iter() {
+    for accessor in &accessors {
         if let Err(ident) = accessor.applies_to.validate(&variants) {
-            return syn::Error::new(ident.span(), format!("variant {ident} not found"))
-                .into_compile_error();
+            return Error::new(ident.span(), format!("variant {ident} not found")).into_compile_error();
         }
 
         let span = accessor.alias.span();
         let method_name = &accessor.alias;
 
         let variations = match accessor.accessor_type {
-            AccessorType::Call => {
-                Either::Left([(SignatureType::ReadOnly, TypeModifier::Unmodified)])
-            }
-            AccessorType::CallMut => {
-                Either::Left([(SignatureType::CallMut, TypeModifier::Unmodified)])
-            }
+            AccessorType::Call => Either::Left([(SignatureType::ReadOnly, TypeModifier::Unmodified)]),
+            AccessorType::CallMut => Either::Left([(SignatureType::CallMut, TypeModifier::Unmodified)]),
             AccessorType::Field => Either::Right([
                 (SignatureType::ReadOnly, TypeModifier::Ref),
                 (SignatureType::FieldMut, TypeModifier::RefMut),
@@ -504,12 +429,7 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
         };
 
         for (signature_type, self_modifier) in variations.into_iter() {
-            let ret = get_ret(
-                span,
-                accessor.applies_to != AppliesTo::All,
-                self_modifier,
-                &accessor.ty,
-            );
+            let ret = get_ret(span, accessor.applies_to != AppliesTo::All, self_modifier, &accessor.ty);
             let match_arms = match variants
                 .iter()
                 .map(|variant| make_match_arms(variant, accessor, self_modifier))
@@ -519,14 +439,7 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
                 Err(err) => return err.into_compile_error(),
             };
 
-            accessor_impls.push(make_impl(
-                span,
-                signature_type,
-                method_name,
-                &ret,
-                match_arms,
-            ));
-            accessor_defs.push(make_def(span, signature_type, method_name, &ret));
+            accessor_impls.push(make_impl(span, signature_type, method_name, &ret, &match_arms));
         }
     }
 
@@ -536,14 +449,15 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
         .generics
         .params
         .iter()
-        .flat_map(|p| match p {
+        .filter_map(|p| match p {
             GenericParam::Type(t) => Some(&t.ident),
             GenericParam::Const(t) => Some(&t.ident),
-            _ => None,
+            GenericParam::Lifetime(_) => None,
         })
         .collect::<Vec<_>>();
 
     syn::parse_quote_spanned! {input_span =>
+        #[allow(dead_code)]
         impl #generics #ident <#(#generics_params),*> #where_clause {
             #(#accessor_impls)*
         }
@@ -571,12 +485,11 @@ mod test {
             }
         };
         let output = crate::enum_variant_accessor::impl_enum_accessor(syn::parse2(input).unwrap());
-        let output = rust_format::RustFmt::default()
-            .format_str(output.to_string())
-            .unwrap();
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"impl SomeEnum {
+            r#"#[allow(dead_code)]
+impl SomeEnum {
     pub fn acc1(&self) -> std::option::Option<&usize> {
         match self {
             Self::A(..) => std::option::Option::None,
@@ -665,12 +578,11 @@ mod test {
             }
         };
         let output = crate::enum_variant_accessor::impl_enum_accessor(syn::parse2(input).unwrap());
-        let output = rust_format::RustFmt::default()
-            .format_str(output.to_string())
-            .unwrap();
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"impl SomeEnum {
+            r#"#[allow(dead_code)]
+impl SomeEnum {
     pub fn acc1(&self) -> std::option::Option<&usize> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(&x.acc1),
@@ -687,7 +599,7 @@ mod test {
     }
 }
 "#
-        )
+        );
     }
 
     #[test]
@@ -701,12 +613,11 @@ mod test {
             }
         };
         let output = crate::enum_variant_accessor::impl_enum_accessor(syn::parse2(input).unwrap());
-        let output = rust_format::RustFmt::default()
-            .format_str(output.to_string())
-            .unwrap();
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r"impl SomeEnum {
+            r"#[allow(dead_code)]
+impl SomeEnum {
     pub fn inner_mut(&mut self) -> std::option::Option<&mut usize> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(x.inner_mut()),
@@ -716,6 +627,6 @@ mod test {
     }
 }
 "
-        )
+        );
     }
 }

@@ -1,32 +1,28 @@
-use proc_macro2::{Literal, Span, TokenStream};
-use quote::{quote_spanned, ToTokens};
-
+use proc_macro2::Delimiter::Parenthesis;
+use proc_macro2::{Literal, Punct, Spacing, TokenStream, TokenTree};
+use quote::{quote_spanned, ToTokens, TokenStreamExt};
 use syn::{
-    self, spanned::Spanned, Attribute, Data, DataStruct, DeriveInput, Error, Expr, ExprLit, Fields,
-    FieldsNamed, FieldsUnnamed, GenericParam, Lit, Meta, NestedMeta,
+    self, spanned::Spanned, Attribute, Data, DataStruct, DeriveInput, Error, Expr, ExprLit, Field, Fields, FieldsNamed,
+    FieldsUnnamed, GenericParam, Lit, Meta, PathSegment,
 };
 
-const HELP_SORTBY: &str = r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, methodcall())]"#;
+const HELP_SORT_BY: &str =
+    r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, methodcall())]"#;
 
 pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     let input_span = input.span();
     let struct_name = input.ident.clone();
 
-    let mut sortable_expressions = vec![];
+    let mut sortables = vec![];
 
     for attr in input
         .attrs
-        .iter()
-        .filter(|i| i.path.get_ident().map(|i| i == "sort_by") == Some(true))
+        .into_iter()
+        .filter(|i| i.path().get_ident().map(|i| i == "sort_by") == Some(true))
     {
         match parse_outer(attr) {
-            Ok(mut vec) => sortable_expressions.append(&mut vec),
-            Err(None) => {
-                return Error::new(attr.tokens.span(), HELP_SORTBY).into_compile_error();
-            }
-            Err(Some((span, message))) => {
-                return Error::new(span, message).into_compile_error();
-            }
+            Ok(mut vec) => sortables.append(&mut vec),
+            Err(e) => return e.into_compile_error(),
         }
     }
 
@@ -35,24 +31,23 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
             fields: Fields::Named(fields),
             ..
         }) => match parse_named_fields(fields) {
-            Ok(mut result) => sortable_expressions.append(&mut result),
+            Ok(mut result) => sortables.append(&mut result),
             Err(e) => return e.into_compile_error(),
         },
         Data::Struct(DataStruct {
             fields: Fields::Unnamed(fields),
             ..
         }) => match parse_unnamed_fields(fields) {
-            Ok(mut result) => sortable_expressions.append(&mut result),
+            Ok(mut result) => sortables.append(&mut result),
             Err(e) => return e.into_compile_error(),
         },
         Data::Enum(_) => (),
         _ => {
-            return Error::new(input_span, r#"SortBy: expected an enum or a struct"#)
-                .into_compile_error();
+            return Error::new(input_span, r#"SortBy: expected an enum or a struct"#).into_compile_error();
         }
     };
 
-    let mut iter_sort_expressions = sortable_expressions.iter();
+    let mut iter_sort_expressions = sortables.iter();
     let ord_statement = if let Some(field) = iter_sort_expressions.next() {
         quote_spanned! { field.span() =>
             core::cmp::Ord::cmp(&self.#field, &other.#field)
@@ -69,7 +64,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         }
     });
 
-    let hash_expressions: Vec<Expr> = sortable_expressions
+    let hash_expressions: Vec<Expr> = sortables
         .iter()
         .map(|expr| syn::parse_quote_spanned!(expr.span() => self.#expr.hash(state)))
         .collect();
@@ -80,10 +75,10 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         .generics
         .params
         .iter()
-        .flat_map(|p| match p {
-            GenericParam::Type(t) => Some(t.ident.to_token_stream()),
-            GenericParam::Const(t) => Some(t.ident.to_token_stream()),
-            GenericParam::Lifetime(t) => Some(t.lifetime.to_token_stream()),
+        .map(|p| match p {
+            GenericParam::Type(t) => t.ident.to_token_stream(),
+            GenericParam::Const(t) => t.ident.to_token_stream(),
+            GenericParam::Lifetime(t) => t.lifetime.to_token_stream(),
         })
         .collect::<Vec<_>>();
 
@@ -116,101 +111,111 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     }
 }
 
-fn parse_unnamed_fields(fields: FieldsUnnamed) -> Result<Vec<Expr>, Error> {
-    let mut sortable_expressions = vec![];
-
-    for (index, field) in fields.unnamed.iter().enumerate() {
-        let span = field.span();
-        let mut attrs = field
-            .attrs
-            .iter()
-            .filter(|i| i.path.get_ident().map_or(false, |i| i == "sort_by"));
-
-        if attrs.next().is_none() {
-            continue;
-        }
-
-        let expr: Expr = syn::parse2(Literal::usize_unsuffixed(index).to_token_stream())?;
-        sortable_expressions.push(expr);
-
-        if attrs.next().is_some() {
-            return Err(Error::new(
-                span,
-                r#"SortBy: expected at most one `sort_by` attribute"#,
-            ));
-        }
-    }
-    Ok(sortable_expressions)
-}
-
-fn parse_named_fields(fields: FieldsNamed) -> Result<Vec<Expr>, Error> {
-    let mut sortable_expressions = vec![];
-
-    for field in fields.named {
-        let span = field.span();
-        let mut attrs = field
-            .attrs
-            .iter()
-            .filter(|i| i.path.get_ident().map(|i| i == "sort_by") == Some(true));
-
-        if attrs.next().is_none() {
-            continue;
-        }
-
-        let expr: Expr = syn::parse2(field.ident.to_token_stream())?;
-        sortable_expressions.push(expr);
-
-        if attrs.next().is_some() {
-            return Err(Error::new(
-                span,
-                r#"SortBy: expected at most one `sort_by` attribute"#,
-            ));
-        }
-    }
-    Ok(sortable_expressions)
-}
-
-fn parse_outer(attr: &Attribute) -> Result<Vec<Expr>, Option<(Span, String)>> {
-    if let Ok(Meta::List(list)) = attr.parse_meta() {
-        let mut sortable_fields = Vec::new();
-        let mut valid = true;
-        for name in list.nested {
-            match name {
-                NestedMeta::Meta(Meta::Path(p)) => {
-                    let expr: Expr = syn::parse2(p.get_ident().to_token_stream())
-                        .map_err(|err| (p.span(), err.to_string()))?;
-                    sortable_fields.push(expr)
-                }
-                NestedMeta::Lit(Lit::Str(l)) => {
-                    sortable_fields.push(l.parse().map_err(|err| (l.span(), err.to_string()))?);
-                }
-                _ => {
-                    valid = false;
-                    break;
+fn field_is_sortable(field: &Field) -> Result<bool, Error> {
+    field.attrs.iter().try_fold(false, |found, attribute| match attribute {
+        Attribute {
+            meta: Meta::Path(path), ..
+        } => {
+            let mut segments = path.segments.iter();
+            if let Some(PathSegment { ident, .. }) = segments.next() {
+                if ident == "sort_by" {
+                    if found {
+                        return Err(Error::new(
+                            ident.span(),
+                            r#"SortBy: expected at most one `sort_by` attribute"#,
+                        ));
+                    }
+                    if let Some(next_segment) = segments.next() {
+                        return Err(Error::new(next_segment.span(), r#"sort_by does not take parameters"#));
+                    }
+                    return Ok(true);
                 }
             }
+            Ok(found)
         }
-        if valid {
-            return Ok(sortable_fields);
-        }
-    }
+        _ => Ok(found),
+    })
+}
 
-    match syn::parse2::<Expr>(attr.tokens.clone()) {
-        Ok(Expr::Tuple(tuple)) => {
-            let elems = tuple.elems.into_iter().map(|elem| match elem {
-                Expr::Lit(ExprLit {
-                              lit: Lit::Str(lit), ..
-                          }) => lit.parse().map_err(|e| Some((lit.span(), e.to_string()))),
-                Expr::Call(_) | Expr::Field(_) | Expr::Path(_) | Expr::MethodCall(_) => {
-                    Ok(elem)
+fn parse_unnamed_fields(fields: FieldsUnnamed) -> Result<Vec<TokenStream>, Error> {
+    fields
+        .unnamed
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, field)| {
+            field_is_sortable(&field)
+                .map(|f| f.then(|| Literal::usize_unsuffixed(index).to_token_stream()))
+                .transpose()
+        })
+        .collect::<Result<Vec<_>, _>>()
+}
+
+fn parse_named_fields(fields: FieldsNamed) -> Result<Vec<TokenStream>, Error> {
+    fields
+        .named
+        .into_iter()
+        .filter_map(|field| {
+            field_is_sortable(&field)
+                .map(|f| f.then(|| field.ident.to_token_stream()))
+                .transpose()
+        })
+        .collect::<Result<Vec<_>, _>>()
+}
+
+fn parse_outer(attr: Attribute) -> Result<Vec<TokenStream>, Error> {
+    let Meta::List(list) = attr.meta else {
+        return Err(Error::new(attr.span(), HELP_SORT_BY));
+    };
+
+    let mut sortable_fields: Vec<TokenStream> = Vec::new();
+
+    let mut paren_expected = false;
+    let mut dot_expected = false;
+    let mut dot_provided = false;
+
+    for token_tree in list.tokens {
+        let span = token_tree.span();
+        (paren_expected, dot_expected, dot_provided) = match token_tree {
+            TokenTree::Group(group) if group.delimiter() != Parenthesis => {
+                return Err(Error::new(span, "Unexpected delimiter"));
+            }
+            TokenTree::Group(_) if !paren_expected => {
+                return Err(Error::new(token_tree.span(), "Call can only follow an identifier"));
+            }
+            TokenTree::Group(group) if !group.stream().is_empty() => {
+                return Err(Error::new(span, "Method calls cannot have arguments"));
+            }
+            TokenTree::Group(_) => {
+                sortable_fields.last_mut().unwrap().append(token_tree);
+                (false, false, false)
+            }
+            TokenTree::Literal(lit) => {
+                if let Expr::Lit(ExprLit { lit: Lit::Str(s), .. }) = syn::parse2::<Expr>(lit.into_token_stream())? {
+                    sortable_fields.push(s.parse::<Expr>()?.to_token_stream());
+                    (false, false, false)
+                } else {
+                    return Err(Error::new(span, "invalid expression"));
                 }
-                _ => Err(Some((elem.span(), format!("Invalid form: `{}`.\nAllowed forms: `field`, `method()`, `inner.field`, `inner.method()", elem.to_token_stream()))))
-            });
-            elems.collect::<Result<_, _>>()
-        }
-        Ok(Expr::Paren(expr)) => Ok(vec![*expr.expr]),
-        _ => Err(None),
+            }
+            TokenTree::Ident(_) if dot_provided => {
+                sortable_fields
+                    .last_mut()
+                    .unwrap()
+                    .extend([TokenTree::Punct(Punct::new('.', Spacing::Alone)), token_tree]);
+                (true, true, false)
+            }
+            TokenTree::Ident(_) => {
+                sortable_fields.push(token_tree.to_token_stream());
+                (true, true, false)
+            }
+            TokenTree::Punct(p) if p.as_char() == ',' => (false, false, false),
+            TokenTree::Punct(p) if dot_expected && p.as_char() == '.' => (false, false, true),
+            TokenTree::Punct(_) => {
+                return Err(Error::new(span, "Unexpected delimiter"));
+            }
+        };
     }
+    Ok(sortable_fields)
 }
 
 #[cfg(test)]
@@ -232,9 +237,7 @@ mod test {
         };
 
         let output = crate::sort_by::impl_sort_by_derive(syn::parse2(input).unwrap());
-        let output = rust_format::RustFmt::default()
-            .format_str(output.to_string())
-            .unwrap();
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
             r#"impl std::hash::Hash for Toto {
@@ -279,9 +282,7 @@ impl core::cmp::Ord for Toto {
         };
 
         let output = crate::sort_by::impl_sort_by_derive(syn::parse2(input).unwrap());
-        let output = rust_format::RustFmt::default()
-            .format_str(output.to_string())
-            .unwrap();
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
             r#"impl std::hash::Hash for Toto {
@@ -328,9 +329,7 @@ impl core::cmp::Ord for Toto {
         };
 
         let output = crate::sort_by::impl_sort_by_derive(syn::parse2(input).unwrap());
-        let output = rust_format::RustFmt::default()
-            .format_str(output.to_string())
-            .unwrap();
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
             r#"impl std::hash::Hash for Toto {
@@ -372,9 +371,7 @@ impl core::cmp::Ord for Toto {
         };
 
         let output = crate::sort_by::impl_sort_by_derive(syn::parse2(input).unwrap());
-        let output = rust_format::RustFmt::default()
-            .format_str(output.to_string())
-            .unwrap();
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
             r#"impl<'a, T> std::hash::Hash for ContextWrapper<'a, T>
@@ -428,9 +425,7 @@ where
         };
 
         let output = crate::sort_by::impl_sort_by_derive(syn::parse2(input).unwrap());
-        let output = rust_format::RustFmt::default()
-            .format_str(output.to_string())
-            .unwrap();
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
             r#"impl std::hash::Hash for Something {
