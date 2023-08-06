@@ -103,6 +103,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
             }
         }
 
+        #[allow(clippy::needless_borrow)]
         impl #generics core::cmp::Ord for #struct_name <#(#generics_params),*> #where_clause {
             fn cmp(&self, other: &Self) -> core::cmp::Ordering {
                 #ord_statement
@@ -189,14 +190,19 @@ fn parse_outer(attr: Attribute) -> Result<Vec<TokenStream>, Error> {
                 sortable_fields.last_mut().unwrap().append(token_tree);
                 (false, false, false)
             }
-            TokenTree::Literal(lit) => {
-                if let Expr::Lit(ExprLit { lit: Lit::Str(s), .. }) = syn::parse2::<Expr>(lit.into_token_stream())? {
+            TokenTree::Literal(lit) => match syn::parse2::<Expr>(lit.into_token_stream())? {
+                Expr::Lit(ExprLit { lit: Lit::Str(s), .. }) => {
                     sortable_fields.push(s.parse::<Expr>()?.to_token_stream());
                     (false, false, false)
-                } else {
+                }
+                Expr::Lit(ExprLit { lit: Lit::Int(i), .. }) => {
+                    sortable_fields.push(i.to_token_stream());
+                    (false, false, false)
+                }
+                _ => {
                     return Err(Error::new(span, "invalid expression"));
                 }
-            }
+            },
             TokenTree::Ident(_) if dot_provided => {
                 sortable_fields
                     .last_mut()
@@ -258,6 +264,7 @@ impl core::cmp::PartialOrd<Self> for Toto {
         std::option::Option::Some(self.cmp(other))
     }
 }
+#[allow(clippy::needless_borrow)]
 impl core::cmp::Ord for Toto {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         core::cmp::Ord::cmp(&self.embed.otherfield, &other.embed.otherfield)
@@ -304,6 +311,7 @@ impl core::cmp::PartialOrd<Self> for Toto {
         std::option::Option::Some(self.cmp(other))
     }
 }
+#[allow(clippy::needless_borrow)]
 impl core::cmp::Ord for Toto {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         core::cmp::Ord::cmp(&self.this, &other.this)
@@ -348,6 +356,7 @@ impl core::cmp::PartialOrd<Self> for Toto {
         std::option::Option::Some(self.cmp(other))
     }
 }
+#[allow(clippy::needless_borrow)]
 impl core::cmp::Ord for Toto {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         core::cmp::Ord::cmp(&self.get_something(), &other.get_something())
@@ -399,6 +408,7 @@ where
         std::option::Option::Some(self.cmp(other))
     }
 }
+#[allow(clippy::needless_borrow)]
 impl<'a, T> core::cmp::Ord for ContextWrapper<'a, T>
 where
     T: Ctx,
@@ -410,11 +420,10 @@ where
 "#
         );
     }
-
     #[test]
     fn test_tuple_struct() {
         let input = syn::parse_quote! {
-            #[sort_by(somemethod(), literal, some.path)]
+            #[sort_by(somemethod(), literal, some.path, 2)]
             struct Something (
               #[sort_by]
               u16,
@@ -433,6 +442,7 @@ where
         self.somemethod().hash(state);
         self.literal.hash(state);
         self.some.path.hash(state);
+        self.2.hash(state);
         self.0.hash(state);
         self.1.hash(state);
     }
@@ -448,11 +458,13 @@ impl core::cmp::PartialOrd<Self> for Something {
         std::option::Option::Some(self.cmp(other))
     }
 }
+#[allow(clippy::needless_borrow)]
 impl core::cmp::Ord for Something {
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         core::cmp::Ord::cmp(&self.somemethod(), &other.somemethod())
             .then_with(|| self.literal.cmp(&other.literal))
             .then_with(|| self.some.path.cmp(&other.some.path))
+            .then_with(|| self.2.cmp(&other.2))
             .then_with(|| self.0.cmp(&other.0))
             .then_with(|| self.1.cmp(&other.1))
     }

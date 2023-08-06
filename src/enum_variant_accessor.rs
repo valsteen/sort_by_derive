@@ -366,7 +366,6 @@ fn make_impl(
     let (self_modifier, method_name) = get_method_modifiers(signature_type, method_name, span);
 
     quote_spanned! {span =>
-        #[allow(dead_code)]
         pub fn #method_name(& #self_modifier self) -> #ret {
             match self {
                 #(#arms),*
@@ -617,7 +616,7 @@ impl SomeEnum {
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r"#[allow(dead_code)]
+            r#"#[allow(dead_code)]
 impl SomeEnum {
     pub fn inner_mut(&mut self) -> std::option::Option<&mut usize> {
         match self {
@@ -627,7 +626,7 @@ impl SomeEnum {
         }
     }
 }
-"
+"#
         );
     }
 }
