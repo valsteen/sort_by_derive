@@ -1,9 +1,9 @@
-use proc_macro2::Delimiter::Parenthesis;
-use proc_macro2::{Literal, Punct, Spacing, TokenStream, TokenTree};
-use quote::{quote_spanned, ToTokens, TokenStreamExt};
+use proc_macro2::{Literal, TokenStream};
+use quote::{quote_spanned, ToTokens};
+use std::str::FromStr;
 use syn::{
-    self, spanned::Spanned, Attribute, Data, DataStruct, DeriveInput, Error, Expr, ExprLit, Field, Fields, FieldsNamed,
-    FieldsUnnamed, GenericParam, Lit, Meta, PathSegment,
+    self, spanned::Spanned, Attribute, Data, DataStruct, DeriveInput, Error, Expr, ExprCall, ExprLit, Field, Fields,
+    FieldsNamed, FieldsUnnamed, GenericParam, Lit, LitBool, Meta, PathSegment,
 };
 
 const HELP_SORT_BY: &str =
@@ -14,16 +14,18 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     let struct_name = input.ident.clone();
 
     let mut sortables = vec![];
-
+    let mut derive_eq = true;
     for attr in input
         .attrs
         .into_iter()
         .filter(|i| i.path().get_ident().map(|i| i == "sort_by") == Some(true))
     {
-        match parse_outer(attr) {
-            Ok(mut vec) => sortables.append(&mut vec),
+        let (should_derive_eq, mut vec) = match parse_outer(attr) {
+            Ok((should_derive_eq, vec)) => (should_derive_eq, vec),
             Err(e) => return e.into_compile_error(),
-        }
+        };
+        derive_eq = should_derive_eq;
+        sortables.append(&mut vec);
     }
 
     match input.data {
@@ -64,9 +66,9 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         }
     });
 
-    let hash_expressions: Vec<Expr> = sortables
+    let hash_expressions: Vec<_> = sortables
         .iter()
-        .map(|expr| syn::parse_quote_spanned!(expr.span() => self.#expr.hash(state)))
+        .map(|expr| quote_spanned!(expr.span() => self.#expr.hash(state)))
         .collect();
 
     let generics = &input.generics;
@@ -82,6 +84,20 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         })
         .collect::<Vec<_>>();
 
+    let derived_eq = if derive_eq {
+        quote_spanned! {input_span =>
+            impl #generics core::cmp::Eq for #struct_name <#(#generics_params),*> #where_clause {}
+
+            impl #generics core::cmp::PartialEq<Self> for #struct_name <#(#generics_params),*> #where_clause {
+                fn eq(&self, other: &Self) -> bool {
+                    self.cmp(other).is_eq()
+                }
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     quote_spanned! {input_span =>
         impl #generics std::hash::Hash for #struct_name <#(#generics_params),*> #where_clause {
             fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -89,13 +105,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
             }
         }
 
-        impl #generics core::cmp::Eq for #struct_name <#(#generics_params),*> #where_clause {}
-
-        impl #generics core::cmp::PartialEq<Self> for #struct_name <#(#generics_params),*> #where_clause {
-            fn eq(&self, other: &Self) -> bool {
-                self.cmp(other).is_eq()
-            }
-        }
+       #derived_eq
 
         impl #generics core::cmp::PartialOrd<Self> for #struct_name <#(#generics_params),*> #where_clause {
             fn partial_cmp(&self, other: &Self) -> core::option::Option<core::cmp::Ordering> {
@@ -163,65 +173,58 @@ fn parse_named_fields(fields: FieldsNamed) -> Result<Vec<TokenStream>, Error> {
         .collect::<Result<Vec<_>, _>>()
 }
 
-fn parse_outer(attr: Attribute) -> Result<Vec<TokenStream>, Error> {
+fn parse_outer(attr: Attribute) -> Result<(bool, Vec<TokenStream>), Error> {
     let Meta::List(list) = attr.meta else {
         return Err(Error::new(attr.span(), HELP_SORT_BY));
     };
 
-    let mut sortable_fields: Vec<TokenStream> = Vec::new();
+    let mut derive_eq = true;
 
-    let mut paren_expected = false;
-    let mut dot_expected = false;
-    let mut dot_provided = false;
+    let sortable_fields = syn::parse2::<ExprCall>(list.into_token_stream())?
+        .args
+        .into_iter()
+        .filter_map(|arg| match &arg {
+            Expr::Assign(assignment) => {
+                let Expr::Path(left)=assignment.left.as_ref() else {
+                    return Some(Err(Error::new(assignment.span(), "Unexpected token")))
+                };
+                if left.path.segments.len() != 1 || left.path.segments[0].ident != "derive_eq" {
+                    return Some(Err(Error::new(
+                        assignment.span(),
+                        "only derive_eq=true|false is supported",
+                    )));
+                }
 
-    for token_tree in list.tokens {
-        let span = token_tree.span();
-        (paren_expected, dot_expected, dot_provided) = match token_tree {
-            TokenTree::Group(group) if group.delimiter() != Parenthesis => {
-                return Err(Error::new(span, "Unexpected delimiter"));
+                let Expr::Lit(ExprLit{  lit: Lit::Bool(LitBool{ value: bool, .. }),.. }) = assignment.right.as_ref() else {
+                    return Some(Err(Error::new(assignment.right.span(), "only derive_eq=true|false is supported")))
+                };
+
+                derive_eq = *bool;
+
+                None
             }
-            TokenTree::Group(_) if !paren_expected => {
-                return Err(Error::new(token_tree.span(), "Call can only follow an identifier"));
-            }
-            TokenTree::Group(group) if !group.stream().is_empty() => {
-                return Err(Error::new(span, "Method calls cannot have arguments"));
-            }
-            TokenTree::Group(_) => {
-                sortable_fields.last_mut().unwrap().append(token_tree);
-                (false, false, false)
-            }
-            TokenTree::Literal(lit) => match syn::parse2::<Expr>(lit.into_token_stream())? {
-                Expr::Lit(ExprLit { lit: Lit::Str(s), .. }) => {
-                    sortable_fields.push(s.parse::<Expr>()?.to_token_stream());
-                    (false, false, false)
+            Expr::Lit(ExprLit{ lit: Lit::Str(s), .. }) => {
+                match TokenStream::from_str(&s.value()) {
+                    Ok(value) => {
+                        let tokens = value.into_iter().map(|mut t| {
+                            t.set_span(arg.span());
+                            t
+                        }).collect::<TokenStream>();
+
+                        Some(Ok(tokens))
+                    },
+                    Err(e) => Some(Err(e.into()))
                 }
-                Expr::Lit(ExprLit { lit: Lit::Int(i), .. }) => {
-                    sortable_fields.push(i.to_token_stream());
-                    (false, false, false)
-                }
-                _ => {
-                    return Err(Error::new(span, "invalid expression"));
-                }
+            }
+            arg @ (Expr::Field(_) | Expr::Call(_) | Expr::Lit(_) | Expr::Path(_) | Expr::MethodCall(_)) => {
+                Some(Ok(arg.to_token_stream()))
             },
-            TokenTree::Ident(_) if dot_provided => {
-                sortable_fields
-                    .last_mut()
-                    .unwrap()
-                    .extend([TokenTree::Punct(Punct::new('.', Spacing::Alone)), token_tree]);
-                (true, true, false)
-            }
-            TokenTree::Ident(_) => {
-                sortable_fields.push(token_tree.to_token_stream());
-                (true, true, false)
-            }
-            TokenTree::Punct(p) if p.as_char() == ',' => (false, false, false),
-            TokenTree::Punct(p) if dot_expected && p.as_char() == '.' => (false, false, true),
-            TokenTree::Punct(_) => {
-                return Err(Error::new(span, "Unexpected delimiter"));
-            }
-        };
-    }
-    Ok(sortable_fields)
+            token => {
+                Some(Err(Error::new(token.span(), "Unexpected token")))
+            },
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok((derive_eq, sortable_fields))
 }
 
 #[cfg(test)]
