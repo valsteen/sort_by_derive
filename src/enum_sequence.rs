@@ -11,8 +11,8 @@ pub fn impl_enum_sequence(input: DeriveInput) -> TokenStream {
     let trait_ident = Ident::new(format!("{ident}EnumSequence").as_str(), input_span);
 
     let Data::Enum(enu) = input.data else {
-            return syn::Error::new(input_span, ENUM_HELP).into_compile_error();
-        };
+        return syn::Error::new(input_span, ENUM_HELP).into_compile_error();
+    };
 
     let mut match_branches = Vec::new();
 
@@ -80,7 +80,7 @@ mod test {
 
         assert_eq!(
             output,
-            r#"trait EEnumSequence {
+            r"trait EEnumSequence {
     fn enum_sequence(&self) -> usize;
 }
 impl EEnumSequence for E {
@@ -92,7 +92,7 @@ impl EEnumSequence for E {
         }
     }
 }
-"#,
+",
         );
     }
 }

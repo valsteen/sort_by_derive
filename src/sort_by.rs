@@ -7,7 +7,7 @@ use syn::{
 };
 
 const HELP_SORT_BY: &str =
-    r#"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, methodcall())]"#;
+    r"SortBy: invalid sort_by attribute, expected list form i.e #[sort_by(attr1, attr2, methodcall())]";
 
 pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
     let input_span = input.span();
@@ -43,7 +43,7 @@ pub fn impl_sort_by_derive(input: DeriveInput) -> TokenStream {
         },
         Data::Enum(_) => (),
         _ => {
-            return Error::new(input_span, r#"SortBy: expected an enum or a struct"#).into_compile_error();
+            return Error::new(input_span, r"SortBy: expected an enum or a struct").into_compile_error();
         }
     };
 
@@ -123,11 +123,11 @@ fn field_is_sortable(field: &Field) -> Result<bool, Error> {
                     if found {
                         return Err(Error::new(
                             ident.span(),
-                            r#"SortBy: expected at most one `sort_by` attribute"#,
+                            r"SortBy: expected at most one `sort_by` attribute",
                         ));
                     }
                     if let Some(next_segment) = segments.next() {
-                        return Err(Error::new(next_segment.span(), r#"sort_by does not take parameters"#));
+                        return Err(Error::new(next_segment.span(), r"sort_by does not take parameters"));
                     }
                     return Ok(true);
                 }
@@ -247,7 +247,7 @@ mod test {
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"impl std::hash::Hash for Toto {
+            r"impl std::hash::Hash for Toto {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.embed.otherfield.hash(state);
         self.a.hash(state);
@@ -273,7 +273,7 @@ impl core::cmp::Ord for Toto {
             .then_with(|| self.c.cmp(&other.c))
     }
 }
-"#
+"
         );
     }
 
@@ -293,7 +293,7 @@ impl core::cmp::Ord for Toto {
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"impl std::hash::Hash for Toto {
+            r"impl std::hash::Hash for Toto {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.this.hash(state);
         self.this.that.hash(state);
@@ -321,7 +321,7 @@ impl core::cmp::Ord for Toto {
             .then_with(|| self.something.do_this().cmp(&other.something.do_this()))
     }
 }
-"#
+"
         );
     }
 
@@ -341,7 +341,7 @@ impl core::cmp::Ord for Toto {
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"impl std::hash::Hash for Toto {
+            r"impl std::hash::Hash for Toto {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.get_something().hash(state);
     }
@@ -363,7 +363,7 @@ impl core::cmp::Ord for Toto {
         core::cmp::Ord::cmp(&self.get_something(), &other.get_something())
     }
 }
-"#
+"
         );
     }
 
@@ -384,7 +384,7 @@ impl core::cmp::Ord for Toto {
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"impl<'a, T> std::hash::Hash for ContextWrapper<'a, T>
+            r"impl<'a, T> std::hash::Hash for ContextWrapper<'a, T>
 where
     T: Ctx,
 {
@@ -418,7 +418,7 @@ where
         core::cmp::Ord::cmp(&self.elapsed, &other.elapsed)
     }
 }
-"#
+"
         );
     }
     #[test]
@@ -438,7 +438,7 @@ where
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"impl std::hash::Hash for Something {
+            r"impl std::hash::Hash for Something {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.somemethod().hash(state);
         self.literal.hash(state);
@@ -470,7 +470,7 @@ impl core::cmp::Ord for Something {
             .then_with(|| self.1.cmp(&other.1))
     }
 }
-"#
+"
         );
     }
 }

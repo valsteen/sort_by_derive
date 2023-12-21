@@ -58,7 +58,7 @@ struct Accessor {
 }
 
 fn parse_attr(attr: &Attribute) -> Result<Accessor, Error> {
-    let Meta::List(MetaList{  tokens,.. }) = attr.meta.clone() else {
+    let Meta::List(MetaList { tokens, .. }) = attr.meta.clone() else {
         return Err(Error::new(attr.span(), ATTR_HELP));
     };
 
@@ -379,8 +379,8 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
     let ident = input.ident;
 
     let Data::Enum(enu) = input.data else {
-            return Error::new(input_span, ENUM_HELP).into_compile_error();
-        };
+        return Error::new(input_span, ENUM_HELP).into_compile_error();
+    };
 
     let variants = enu.variants.into_iter().collect::<Vec<_>>();
 
@@ -489,7 +489,7 @@ mod test {
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"#[allow(dead_code)]
+            r"#[allow(dead_code)]
 impl SomeEnum {
     pub fn acc1(&self) -> std::option::Option<&usize> {
         match self {
@@ -564,7 +564,7 @@ impl SomeEnum {
         }
     }
 }
-"#
+"
         );
     }
 
@@ -582,7 +582,7 @@ impl SomeEnum {
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"#[allow(dead_code)]
+            r"#[allow(dead_code)]
 impl SomeEnum {
     pub fn acc1(&self) -> std::option::Option<&usize> {
         match self {
@@ -599,7 +599,7 @@ impl SomeEnum {
         }
     }
 }
-"#
+"
         );
     }
 
@@ -617,7 +617,7 @@ impl SomeEnum {
         let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
         assert_eq!(
             output,
-            r#"#[allow(dead_code)]
+            r"#[allow(dead_code)]
 impl SomeEnum {
     pub fn inner_mut(&mut self) -> std::option::Option<&mut usize> {
         match self {
@@ -627,7 +627,7 @@ impl SomeEnum {
         }
     }
 }
-"#
+"
         );
     }
 }
