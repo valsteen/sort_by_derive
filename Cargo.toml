@@ -23,4 +23,4 @@ either = "^1.4.0"
 pretty_assertions = "^1"
 
 [dev-dependencies]
-rust-format = "^0"
+rust-format = ">=0.2, <1"
