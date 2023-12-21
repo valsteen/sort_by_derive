@@ -3,8 +3,8 @@ use proc_macro2::{Delimiter, Ident, Span, TokenStream, TokenTree};
 use quote::{quote_spanned, ToTokens, TokenStreamExt};
 use syn::token::Mut;
 use syn::{
-    self, spanned::Spanned, Attribute, Data, DeriveInput, Error, Expr, ExprParen, ExprPath, Fields, FieldsNamed, Meta,
-    MetaList, Token, Type, TypeReference, Variant,
+    self, spanned::Spanned, Attribute, Data, DeriveInput, Error, Expr, ExprParen, ExprPath, Fields, FieldsNamed,
+    GenericParam, Meta, MetaList, Token, Type, TypeReference, Variant,
 };
 
 const ATTR_HELP: &str = "EnumAccessor: Invalid accessor declaration, expected #[accessor(field1: type, except(VariantWithoutAccessor1,VariantWithoutAccessor2))]";
@@ -445,11 +445,21 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
 
     let generics = &input.generics;
     let where_clause = &input.generics.where_clause;
-    let generics_params = &input.generics.params.to_token_stream();
+
+    let generics_params = &input
+        .generics
+        .params
+        .iter()
+        .map(|p| match p {
+            GenericParam::Type(t) => t.ident.to_token_stream(),
+            GenericParam::Const(t) => t.ident.to_token_stream(),
+            GenericParam::Lifetime(t) => t.to_token_stream(),
+        })
+        .collect::<Vec<_>>();
 
     syn::parse_quote_spanned! {input_span =>
         #[allow(dead_code)]
-        impl #generics #ident <#generics_params> #where_clause {
+        impl #generics #ident <#(#generics_params),*> #where_clause {
             #(#accessor_impls)*
         }
     }
@@ -563,10 +573,10 @@ impl SomeEnum {
     fn test_lifetimes() {
         let input = syn::parse_quote! {
             #[accessor(acc1: usize, (B))]
-            enum SomeEnum<'a> {
-                A(a),
+            enum SomeEnum<'a, Get: Fn() -> u8> {
+                A(A),
                 B,
-                C(b<'a>)
+                C(&'a Get)
             }
         };
 
@@ -576,7 +586,7 @@ impl SomeEnum {
         assert_eq!(
             output,
             r"#[allow(dead_code)]
-impl<'a> SomeEnum<'a> {
+impl<'a, Get: Fn() -> u8> SomeEnum<'a, Get> {
     pub fn acc1(&self) -> std::option::Option<&usize> {
         match self {
             Self::A(x, ..) => std::option::Option::Some(&x.acc1),
