@@ -16,11 +16,11 @@ proc-macro = true
 doctest = false
 
 [dependencies]
-proc-macro2 = "1.0.43"
-syn = { version = "2.0.28", features = ["full"] }
-quote = "1.0.21"
-either = "1.8.0"
-pretty_assertions = "1.4.0"
+proc-macro2 = "^1.0.52"
+syn = { version = "^2", features = ["full"] }
+quote = "^1.0.25"
+either = "^1.4.0"
+pretty_assertions = "^1"
 
 [dev-dependencies]
-rust-format = "0.3.4"
+rust-format = "^0"
