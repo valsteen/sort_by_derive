@@ -3,8 +3,8 @@ use proc_macro2::{Delimiter, Ident, Span, TokenStream, TokenTree};
 use quote::{quote_spanned, ToTokens, TokenStreamExt};
 use syn::token::Mut;
 use syn::{
-    self, spanned::Spanned, Attribute, Data, DeriveInput, Error, Expr, ExprParen, ExprPath, Fields, FieldsNamed,
-    GenericParam, Meta, MetaList, Token, Type, TypeReference, Variant,
+    self, spanned::Spanned, Attribute, Data, DeriveInput, Error, Expr, ExprParen, ExprPath, Fields, FieldsNamed, Meta,
+    MetaList, Token, Type, TypeReference, Variant,
 };
 
 const ATTR_HELP: &str = "EnumAccessor: Invalid accessor declaration, expected #[accessor(field1: type, except(VariantWithoutAccessor1,VariantWithoutAccessor2))]";
@@ -445,20 +445,11 @@ pub fn impl_enum_accessor(input: DeriveInput) -> TokenStream {
 
     let generics = &input.generics;
     let where_clause = &input.generics.where_clause;
-    let generics_params = &input
-        .generics
-        .params
-        .iter()
-        .filter_map(|p| match p {
-            GenericParam::Type(t) => Some(&t.ident),
-            GenericParam::Const(t) => Some(&t.ident),
-            GenericParam::Lifetime(_) => None,
-        })
-        .collect::<Vec<_>>();
+    let generics_params = &input.generics.params.to_token_stream();
 
     syn::parse_quote_spanned! {input_span =>
         #[allow(dead_code)]
-        impl #generics #ident <#(#generics_params),*> #where_clause {
+        impl #generics #ident <#generics_params> #where_clause {
             #(#accessor_impls)*
         }
     }
@@ -568,6 +559,42 @@ impl SomeEnum {
         );
     }
 
+    #[test]
+    fn test_lifetimes() {
+        let input = syn::parse_quote! {
+            #[accessor(acc1: usize, (B))]
+            enum SomeEnum<'a> {
+                A(a),
+                B,
+                C(b<'a>)
+            }
+        };
+
+        let output = crate::enum_variant_accessor::impl_enum_accessor(syn::parse2(input).unwrap());
+        let output = rust_format::RustFmt::default().format_str(output.to_string()).unwrap();
+
+        assert_eq!(
+            output,
+            r"#[allow(dead_code)]
+impl<'a> SomeEnum<'a> {
+    pub fn acc1(&self) -> std::option::Option<&usize> {
+        match self {
+            Self::A(x, ..) => std::option::Option::Some(&x.acc1),
+            Self::B => std::option::Option::None,
+            Self::C(x, ..) => std::option::Option::Some(&x.acc1),
+        }
+    }
+    pub fn acc1_mut(&mut self) -> std::option::Option<&mut usize> {
+        match self {
+            Self::A(x, ..) => std::option::Option::Some(&mut x.acc1),
+            Self::B => std::option::Option::None,
+            Self::C(x, ..) => std::option::Option::Some(&mut x.acc1),
+        }
+    }
+}
+"
+        );
+    }
     #[test]
     fn test_unit() {
         let input = syn::parse_quote! {
